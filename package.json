@@ -1,5 +1,5 @@
 {
-  "name": "grist-widget-timetracker",
+  "name": "grist-widget-time-tracker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
