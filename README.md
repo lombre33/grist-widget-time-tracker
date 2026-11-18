@@ -1,14 +1,14 @@
 # Suivi du temps : widget Grist
 
-Chronomètre le temps passé sur les lots de tes projets clients et le compare aux jours vendus.
+Chronomètre le temps passé sur les prestations de tes missions clients et le compare aux jours vendus.
 Widget personnalisé pour [Grist](https://www.getgrist.com/), sans framework ni étape de construction.
 
 ## Ce qu'il fait
 
-- **Chrono en direct** sur un lot. Changer de lot pendant le chrono ferme le segment et en ouvre un autre :
+- **Chrono en direct** sur une prestation. Changer de prestation pendant le chrono ferme le segment et en ouvre un autre :
   c'est le milestone, avec son temps intermédiaire.
 - **Note** optionnelle sur le segment en cours.
-- **Vendu vs réel** par lot, en jours de 7 h, avec alerte à 85 % et dépassement en orange.
+- **Vendu vs réel** par prestation, en jours de 7 h, avec alerte à 85 % et dépassement en orange.
 - **Journée** : temps du jour sur 7 h, série de jours d'affilée.
 - **Entrées** jour par jour, avec **saisie et correction à la main** (oubli de lancer ou d'arrêter le chrono) :
   ajouter, modifier, supprimer (avec confirmation). Une fin vide relance le chrono depuis l'heure de début.
@@ -23,13 +23,14 @@ Le widget lit les tables du document de gestion client et n'y change rien :
 
 | Table | Colonnes lues | Rôle |
 | --- | --- | --- |
-| `CLIENTS` | `Nom` | nom du client affiché sur chaque lot |
-| `MISSIONS` | `numero`, `Client` (`date` pour l'ordre) | la mission d'un lot |
-| `DEVIS` | `Mission`, `prestations`, `Lots` | un lot = une mission + une valeur de `Lots` |
-| `Table1` | `heures` | le vendu d'un lot = somme des heures des prestations de ses lignes de devis |
+| `CLIENTS` | `Nom` | nom du client affiché sur chaque prestation |
+| `MISSIONS` | `numero`, `Client` (`date` pour l'ordre) | la mission d'une prestation |
+| `DEVIS` | `Mission`, `prestations`, `Lots` | une prestation suivie = une ligne de devis (`Lots` s'affiche en contexte) |
+| `Table1` | `Missions`, `heures` | nom de la prestation et vendu (heures, 7 h = 1 j) |
 
 Il écrit seulement dans `Time_tracking` : au premier lancement, il y ajoute (avec ton accord) les colonnes
-`Mission`, `Lot`, `Debut`, `Fin`, `Note`, `Session` et la formule `Duree_min`. Les colonnes déjà là (`A`, `B`, `C`…)
+`Devis` (la ligne de devis), `Debut`, `Fin`, `Note`, `Session`, et les formules `Duree_min`,
+`Mission` et `Prestation` (pour tes résumés Grist par mission ou par prestation). Les colonnes déjà là (`A`, `B`, `C`…)
 restent. Si `Time_tracking` n'existe pas, il la crée.
 
 ## Installation dans Grist
@@ -49,7 +50,7 @@ npm run test:navigateur     # parcours complet dans Chromium avec un faux Grist 
 - `js/grist.js` : seul module qui parle à Grist. `js/ui.js`, `js/dom.js` : affichage. `js/main.js` : gestes.
 - Le faux Grist des essais calcule les formules à la main : il ne remplace pas un essai dans un vrai Grist.
   `test/grist/run-time-tracker.mjs` joue le parcours dans un vrai Grist (grist-static, labo de `grist-widget-GFS`) :
-  structure de la gestion client, préparation de `Time_tracking`, lots des devis, chrono, changement de lot,
+  structure de la gestion client, préparation de `Time_tracking`, prestations des devis, chrono, changement de prestation,
   rechargement en cours de chrono, saisie et correction à la main, formules de Grist.
 - La politique de sécurité refuse les styles en ligne : le thème que Grist pousse dans le widget est ignoré
   (deux avertissements en console au chargement, sans effet), le widget a ses propres couleurs.
