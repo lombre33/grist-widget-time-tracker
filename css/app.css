@@ -133,20 +133,30 @@ input[type="text"] { height: 44px; border: 1px solid var(--trait); border-radius
 
 .entrees ul { list-style: none; margin: 0; padding: 0; }
 
-/* Nouveau lot */
-.nouveau-lot summary { cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 8px; list-style: none; min-height: 28px; }
-.nouveau-lot summary::-webkit-details-marker { display: none; }
-.nouveau-lot form { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
-.grille-champs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.champ { display: flex; flex-direction: column; gap: 4px; }
-.champ label { font-size: 12px; font-weight: 600; color: var(--discret); }
-.actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-
 .installation { max-width: 560px; margin: 40px auto; }
 .installation h1 { display: flex; align-items: center; gap: 8px; }
 .installation ul { margin: 0; padding-left: 20px; line-height: 1.7; }
 
 .alerte { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); background: var(--sombre); color: var(--sombre-encre); padding: 12px 18px; border-radius: 12px; max-width: calc(100% - 32px); }
+
+/* Entrées et saisie à la main */
+.nav-jour { display: flex; align-items: center; gap: 4px; }
+.jour-vu { min-width: 120px; text-align: center; font-weight: 600; }
+.jour-vu::first-letter { text-transform: uppercase; }
+.icone-btn { width: 36px; height: 36px; border: none; border-radius: 10px; background: transparent; display: inline-flex; align-items: center; justify-content: center; color: var(--discret); flex: none; }
+.icone-btn:hover:not(:disabled) { background: var(--carte-2); color: var(--encre); }
+.bouton-secondaire { min-height: 44px; padding: 0 16px; border: 1px solid var(--trait); border-radius: 10px; background: var(--carte); font-weight: 600; display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; }
+.bouton-danger { min-height: 44px; padding: 0 16px; border: 1px solid var(--trait); border-radius: 10px; background: var(--carte); color: var(--depasse-encre); font-weight: 600; margin-left: auto; }
+.bouton-danger.confirmer { background: var(--depasse-encre); color: #FFFFFF; border-color: var(--depasse-encre); }
+.fenetre { border: none; border-radius: var(--rayon); padding: 22px; width: min(520px, calc(100% - 24px)); background: var(--carte); color: var(--encre); }
+.fenetre::backdrop { background: rgba(15, 17, 21, .45); }
+.fenetre form { display: flex; flex-direction: column; gap: 12px; }
+.fenetre .grille-champs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.champ { display: flex; flex-direction: column; gap: 4px; }
+.champ label { font-size: 12px; font-weight: 600; color: var(--discret); }
+select, input[type="date"], input[type="time"] { height: 44px; border: 1px solid var(--trait); border-radius: 10px; padding: 0 10px; background: var(--carte); width: 100%; }
+.grille-champs { display: grid; gap: 10px; }
+.actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* Téléphone et panneau étroit */
 @media (max-width: 760px) {
@@ -160,5 +170,6 @@ input[type="text"] { height: 44px; border: 1px solid var(--trait); border-radius
   .jour { gap: 14px; }
   .anneau { width: 84px; height: 84px; }
   .jour-total { font-size: 26px; }
-  .grille-champs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fenetre .grille-champs { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .fenetre .grille-champs .champ:first-child { grid-column: 1 / -1; }
 }

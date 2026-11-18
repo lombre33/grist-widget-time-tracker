@@ -1,6 +1,9 @@
-// Le chrono vit dans la table Temps : un segment ouvert est une ligne avec un Début et sans Fin.
+// Le chrono vit dans la table Time_tracking : un segment ouvert est une ligne avec un Début et sans Fin.
 // Il survit donc à la fermeture de l'onglet et se voit depuis un autre appareil.
 // Changer de lot pendant le chrono ferme le segment et en ouvre un autre : c'est le milestone.
+
+import { TABLE_TEMPS } from './schema.js';
+import { champsDuLot } from './modele.js';
 
 /** Le segment ouvert le plus récent, ou null. */
 export function segmentOuvert(temps) {
@@ -11,10 +14,10 @@ export function segmentOuvert(temps) {
   return ouvert;
 }
 
-const ajout = (lotId, sec, session) => [
-  'AddRecord', 'Temps', null, { Lot: lotId, Debut: sec, Session: session },
+const ajout = (cle, sec, session) => [
+  'AddRecord', TABLE_TEMPS, null, { ...champsDuLot(cle), Debut: sec, Session: session },
 ];
-const fermeture = (ligne, sec) => ['UpdateRecord', 'Temps', ligne.id, { Fin: Math.max(sec, ligne.Debut) }];
+const fermeture = (ligne, sec) => ['UpdateRecord', TABLE_TEMPS, ligne.id, { Fin: Math.max(sec, ligne.Debut) }];
 
 /** Démarre le chrono sur un lot. `sec` : secondes depuis l'époque Unix. */
 export function demarrer(lotId, sec) {
@@ -36,5 +39,5 @@ export function arreter(ouvert, sec) {
 /** Écrit la note du segment ouvert, si elle a changé. */
 export function noter(ouvert, note) {
   if (!ouvert || (ouvert.Note || '') === note) return [];
-  return [['UpdateRecord', 'Temps', ouvert.id, { Note: note }]];
+  return [['UpdateRecord', TABLE_TEMPS, ouvert.id, { Note: note }]];
 }

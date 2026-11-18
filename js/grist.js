@@ -1,7 +1,8 @@
 // Seul module qui parle à Grist (API des widgets : window.grist).
 
-import { SCHEMA } from './schema.js';
+import { SOURCES, TABLE_TEMPS } from './schema.js';
 import { enLignes } from './vue.js';
+import { construireModele } from './modele.js';
 
 const api = () => window.grist;
 
@@ -15,20 +16,20 @@ export function brancher(surChangement) {
 /** Tables et colonnes existantes, pour celles que le widget utilise. */
 export async function lireStructure() {
   const tables = await api().docApi.listTables();
-  const utiles = new Set(SCHEMA.map((d) => d.table));
+  const utiles = new Set([...Object.keys(SOURCES), TABLE_TEMPS]);
   const existant = {};
   for (const t of tables) {
-    if (!utiles.has(t)) continue;
-    existant[t] = Object.keys(await api().docApi.fetchTable(t));
+    if (utiles.has(t)) existant[t] = Object.keys(await api().docApi.fetchTable(t));
   }
   return existant;
 }
 
+/** Lit les tables de gestion client et rend les lots et le temps du chrono. */
 export async function lireDonnees() {
-  const [lots, temps, clients, projets] = await Promise.all(
-    ['Lots', 'Temps', 'Clients', 'Projets'].map((t) => api().docApi.fetchTable(t).then(enLignes)),
+  const [clients, missions, devis, prestations, temps] = await Promise.all(
+    ['CLIENTS', 'MISSIONS', 'DEVIS', 'Table1', TABLE_TEMPS].map((t) => api().docApi.fetchTable(t).then(enLignes)),
   );
-  return { lots, temps, clients, projets };
+  return construireModele({ clients, missions, devis, prestations, temps });
 }
 
 export function appliquer(actions) {
@@ -36,7 +37,7 @@ export function appliquer(actions) {
 }
 
 /**
- * Crée les tables et colonnes manquantes, puis vérifie que Grist a gardé les noms demandés
+ * Crée Time_tracking ou ses colonnes manquantes, puis vérifie que Grist a gardé le nom demandé
  * (il renomme une table dont le nom est déjà pris).
  */
 export async function installer(actions) {

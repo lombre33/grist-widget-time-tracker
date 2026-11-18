@@ -9,29 +9,34 @@ Widget personnalisé pour [Grist](https://www.getgrist.com/), sans framework ni 
   c'est le milestone, avec son temps intermédiaire.
 - **Note** optionnelle sur le segment en cours.
 - **Vendu vs réel** par lot, en jours de 7 h, avec alerte à 85 % et dépassement en orange.
-- **Journée** : temps du jour sur 7 h, série de jours d'affilée, entrées du jour.
-- **Nouveau lot** depuis le widget : le client et le projet sont créés s'ils n'existent pas.
-- Ordinateur et téléphone (mise en page qui passe sur une colonne sous 760 px), clair et sombre.
+- **Journée** : temps du jour sur 7 h, série de jours d'affilée.
+- **Entrées** jour par jour, avec **saisie et correction à la main** (oubli de lancer ou d'arrêter le chrono) :
+  ajouter, modifier, supprimer (avec confirmation). Une fin vide relance le chrono depuis l'heure de début.
+- Ordinateur et téléphone (une colonne sous 760 px), clair et sombre.
 
-Le chrono vit dans la table `Temps` (une ligne avec un début et sans fin) : il survit à la fermeture de l'onglet et
-se voit d'un appareil à l'autre (rafraîchi au retour sur l'onglet, ou toutes les 30 s).
+Le chrono vit dans la table `Time_tracking` (une ligne avec un début et sans fin) : il survit à la fermeture de
+l'onglet et se voit d'un appareil à l'autre (rafraîchi au retour sur l'onglet, ou toutes les 30 s).
+
+## Branché sur la gestion client
+
+Le widget lit les tables du document de gestion client et n'y change rien :
+
+| Table | Colonnes lues | Rôle |
+| --- | --- | --- |
+| `CLIENTS` | `Nom` | nom du client affiché sur chaque lot |
+| `MISSIONS` | `numero`, `Client` (`date` pour l'ordre) | la mission d'un lot |
+| `DEVIS` | `Mission`, `prestations`, `Lots` | un lot = une mission + une valeur de `Lots` |
+| `Table1` | `heures` | le vendu d'un lot = somme des heures des prestations de ses lignes de devis |
+
+Il écrit seulement dans `Time_tracking` : au premier lancement, il y ajoute (avec ton accord) les colonnes
+`Mission`, `Lot`, `Debut`, `Fin`, `Note`, `Session` et la formule `Duree_min`. Les colonnes déjà là (`A`, `B`, `C`…)
+restent. Si `Time_tracking` n'existe pas, il la crée.
 
 ## Installation dans Grist
 
-1. Ajoute une vue « Widget personnalisé » et colle l'adresse du site GitHub Pages de ce dépôt.
+1. Ajoute une vue « Widget personnalisé » et colle `https://lombre33.github.io/grist-widget-time-tracker/`.
 2. Règle l'accès sur **Accès complet au document**.
-3. Au premier lancement, le widget propose de créer ses tables. Il ne modifie ni ne supprime rien d'existant.
-
-## Tables créées
-
-| Table | Colonnes saisies | Formules |
-| --- | --- | --- |
-| `Clients` | `Nom` | |
-| `Projets` | `Nom`, `Client` | |
-| `Lots` | `Nom`, `Projet`, `Jours_vendus`, `Termine` | `Client_nom`, `Projet_nom`, `Reel_min`, `Reel_j`, `Ecart_j` |
-| `Temps` | `Lot`, `Debut`, `Fin`, `Note`, `Session` | `Duree_min` |
-
-Un lot coché `Termine` disparaît du widget. Les formules restent utilisables dans tes propres vues et tableaux de synthèse.
+3. Au premier lancement, accepte « Préparer Time_tracking ».
 
 ## Développement
 
@@ -40,11 +45,12 @@ npm test                    # tests unitaires (logique pure)
 npm run test:navigateur     # parcours complet dans Chromium avec un faux Grist (Playwright requis)
 ```
 
-- `js/format.js`, `js/schema.js`, `js/session.js`, `js/vue.js`, `js/nouveau-lot.js` : logique pure, testée.
+- `js/format.js`, `js/schema.js`, `js/modele.js`, `js/session.js`, `js/saisie.js`, `js/vue.js` : logique pure, testée.
 - `js/grist.js` : seul module qui parle à Grist. `js/ui.js`, `js/dom.js` : affichage. `js/main.js` : gestes.
 - Le faux Grist des essais calcule les formules à la main : il ne remplace pas un essai dans un vrai Grist.
   `test/grist/run-time-tracker.mjs` joue le parcours dans un vrai Grist (grist-static, labo de `grist-widget-GFS`) :
-  création des tables, lots, chrono, changement de lot, rechargement en cours de chrono, formules de Grist.
+  structure de la gestion client, préparation de `Time_tracking`, lots des devis, chrono, changement de lot,
+  rechargement en cours de chrono, saisie et correction à la main, formules de Grist.
 - La politique de sécurité refuse les styles en ligne : le thème que Grist pousse dans le widget est ignoré
   (deux avertissements en console au chargement, sans effet), le widget a ses propres couleurs.
 

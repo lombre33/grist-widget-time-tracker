@@ -1,4 +1,5 @@
-// Parcours complet dans Chromium avec le faux Grist : installation, lots, chrono, changement de lot, arrêt.
+// Parcours complet dans Chromium avec le faux Grist : préparation de Time_tracking, lots des devis, chrono,
+// changement de lot, arrêt, puis saisie, correction et suppression d'un temps à la main.
 // Lancer : npm run test:navigateur (il faut Playwright ; l'essai est sauté sans lui).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,10 +27,20 @@ function serveur() {
   return new Promise((ok) => s.listen(0, () => ok(s)));
 }
 
-test('parcours du chrono', { skip: !playwright && 'Playwright absent' }, async () => {
+test('parcours du chrono', { skip: !playwright && 'Playwright absent', timeout: 120000 }, async () => {
   const s = await serveur();
   const nav = await playwright.chromium.launch();
+  try {
+    await parcours(nav, s);
+  } finally {
+    await nav.close();
+    s.close();
+  }
+});
+
+async function parcours(nav, s) {
   const page = await nav.newPage({ viewport: { width: 1200, height: 900 } });
+  page.setDefaultTimeout(8000);
   const erreurs = [];
   page.on('pageerror', (e) => erreurs.push(e.message));
   await page.route('https://docs.getgrist.com/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
@@ -37,18 +48,12 @@ test('parcours du chrono', { skip: !playwright && 'Playwright absent' }, async (
   await page.addInitScript({ path: path.join(racine, 'test/navigateur/faux-grist.js') });
   await page.goto(`http://localhost:${s.address().port}/index.html`);
 
-  await page.getByRole('button', { name: 'Créer les tables' }).click();
-  await page.getByText('Nouveau lot').click();
-  for (const [c, p, l, j] of [['Atelier Mira', 'Refonte site', 'Cadrage', '2'], ['Atelier Mira', 'Refonte site', 'Maquettes', '4']]) {
-    await page.getByLabel('Client').fill(c);
-    await page.getByLabel('Projet').fill(p);
-    await page.getByLabel('Lot ou phase').fill(l);
-    await page.getByLabel('Jours vendus').fill(j);
-    await page.getByRole('button', { name: 'Ajouter le lot' }).click();
-    await page.getByText('Nouveau lot').click();
-  }
-  const clients = await page.evaluate(() => window.__fauxGrist.tables.Clients.length);
-  assert.equal(clients, 1, 'le client existant est réutilisé');
+  await page.getByRole('button', { name: 'Préparer Time_tracking' }).click();
+  await page.locator('.puce').first().waitFor();
+  const cols = await page.evaluate(() => window.__fauxGrist.tables);
+  assert.equal(await page.locator('.puce').count(), 2, 'un lot par valeur de Lots du devis');
+  assert.match(await page.locator('.lot', { hasText: 'Maquettes' }).innerText(), /3 j vendus/, '21 h = 3 j');
+  assert.equal(cols.Time_tracking.length, 0);
 
   await page.locator('.puce', { hasText: 'Cadrage' }).click();
   await page.getByRole('button', { name: 'Démarrer' }).click();
@@ -60,8 +65,9 @@ test('parcours du chrono', { skip: !playwright && 'Playwright absent' }, async (
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(racine, 'test/navigateur/ordinateur.png') });
 
-  const temps = await page.evaluate(() => window.__fauxGrist.tables.Temps);
+  const temps = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
   assert.equal(temps.length, 2);
+  assert.deepEqual([temps[0].Mission, temps[0].Lot, temps[1].Lot], [1, 'Cadrage', 'Maquettes']);
   assert.ok(temps[0].Fin, 'le premier segment est fermé');
   assert.equal(temps[0].Note, 'Atelier de cadrage');
   assert.equal(temps[1].Session, temps[0].Session);
@@ -72,9 +78,46 @@ test('parcours du chrono', { skip: !playwright && 'Playwright absent' }, async (
 
   await page.getByRole('button', { name: 'Arrêter et enregistrer' }).click();
   await page.waitForTimeout(300);
-  const fin = await page.evaluate(() => window.__fauxGrist.tables.Temps.every((r) => r.Fin));
+  const fin = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking.every((r) => r.Fin));
   assert.ok(fin, 'tous les segments sont fermés');
+
+  // Saisie à la main : un oubli d'hier, puis correction et suppression.
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await page.getByRole('button', { name: 'Jour précédent' }).click();
+  await page.getByRole('button', { name: 'Ajouter un temps' }).click();
+  await page.getByLabel('Lot', { exact: true }).selectOption({ label: 'Cadrage · Atelier Mira · M-2026-01' });
+  await page.getByLabel('Début').fill('09:00');
+  await page.getByLabel('Fin', { exact: true }).fill('10:30');
+  await page.locator('#s-note').fill('Oubli du chrono');
+  await page.screenshot({ path: path.join(racine, 'test/navigateur/saisie.png') });
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await page.waitForTimeout(300);
+  let lignes = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
+  const oubli = lignes.find((r) => r.Note === 'Oubli du chrono');
+  assert.ok(oubli && oubli.Fin - oubli.Debut === 5400, 'une heure et demie la veille');
+  assert.ok(Date.now() / 1000 - oubli.Debut > 12 * 3600);
+  assert.match(await page.locator('.entrees').innerText(), /1 h 30/);
+
+  await page.getByRole('button', { name: /^Modifier Cadrage/ }).click();
+  await page.getByLabel('Fin', { exact: true }).fill('11:00');
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await page.waitForTimeout(300);
+  lignes = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
+  assert.equal(lignes.find((r) => r.id === oubli.id).Fin - oubli.Debut, 7200, 'fin corrigée');
+
+  await page.getByRole('button', { name: /^Modifier Cadrage/ }).click();
+  await page.getByRole('button', { name: 'Supprimer' }).click();
+  await page.getByRole('button', { name: 'Confirmer la suppression' }).click();
+  await page.waitForTimeout(300);
+  lignes = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
+  assert.ok(!lignes.some((r) => r.id === oubli.id), 'ligne supprimée après confirmation');
+
+  // Refus lisible : fin vide alors qu'aucun chrono ne tourne est permis, mais pas de lot.
+  await page.getByRole('button', { name: 'Ajouter un temps' }).click();
+  await page.getByLabel('Lot', { exact: true }).selectOption('');
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  assert.match(await page.getByRole('alert').innerText(), /Choisis un lot/);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('dialog[open]').count(), 0);
   assert.deepEqual(erreurs, []);
-  await nav.close();
-  s.close();
-});
+}

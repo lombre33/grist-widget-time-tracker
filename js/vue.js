@@ -86,24 +86,34 @@ function vueJour(temps, maintenant, minParJour) {
   };
 }
 
-function entreesDuJour(temps, parId, maintenant) {
-  const depuis = minuit(maintenant);
+const heureTxt = (sec) => new Date(sec * 1000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+/** Temps d'un jour (minuit `jour`), du plus récent au plus ancien, avec leur plage horaire. */
+export function entreesDuJour(temps, parId, maintenant, jour = minuit(maintenant)) {
+  const lendemain = minuit(jour + 36 * 3600);
   return temps
-    .filter((r) => r.Debut && fin(r, maintenant) > depuis)
+    .filter((r) => r.Debut && r.Debut < lendemain && fin(r, maintenant) > jour)
     .sort((a, b) => b.Debut - a.Debut)
     .map((r) => ({
+      id: r.id,
       libelle: libelleLot(parId.get(r.Lot)),
       note: r.Note || (r.Fin ? 'Sans note' : 'En cours'),
-      duree: hm(minutesDepuis(r, depuis, maintenant)),
+      plage: `${heureTxt(r.Debut)} – ${r.Fin ? heureTxt(r.Fin) : 'en cours'}`,
+      duree: hm(minutesEntre(r, jour, lendemain, maintenant)),
     }));
+}
+
+function minutesEntre(r, de, a, maintenant) {
+  return Math.max(0, Math.min(fin(r, maintenant), a) - Math.max(r.Debut, de)) / 60;
 }
 
 /**
  * @param {{lots: object[], temps: object[]}} donnees  lignes Grist
  * @param {number} maintenant  secondes
- * @param {number|null} choix  lot choisi quand le chrono est arrêté
+ * @param {number|string|null} choix  lot choisi quand le chrono est arrêté
+ * @param {number|null} jourVu  minuit du jour dont on liste les temps (aujourd'hui par défaut)
  */
-export function construireVue(donnees, maintenant, choix, minParJour = MIN_PAR_JOUR) {
+export function construireVue(donnees, maintenant, choix, jourVu = null, minParJour = MIN_PAR_JOUR) {
   const { lots, temps } = donnees;
   const parId = new Map(lots.map((l) => [l.id, l]));
   const ouvert = segmentOuvert(temps);
@@ -127,7 +137,10 @@ export function construireVue(donnees, maintenant, choix, minParJour = MIN_PAR_J
     })),
     segments: segmentsDeSession(temps, ouvert, parId, maintenant),
     jour: vueJour(temps, maintenant, minParJour),
-    entrees: entreesDuJour(temps, parId, maintenant),
+    jourVu: jourVu ?? minuit(maintenant),
+    jourVuTxt: libelleJour(jourVu ?? minuit(maintenant), maintenant),
+    entrees: entreesDuJour(temps, parId, maintenant, jourVu ?? minuit(maintenant)),
+    tousLots: lots.map((l) => ({ id: l.id, libelle: libelleLot(l), termine: Boolean(l.Termine) })),
   };
 }
 
@@ -142,4 +155,12 @@ export function serie(temps, maintenant) {
     jour = minuit(jour - 43200);
   }
   return n;
+}
+
+/** « Aujourd’hui », « Hier » ou « lundi 16 novembre ». */
+export function libelleJour(jour, maintenant) {
+  const auj = minuit(maintenant);
+  if (jour === auj) return 'Aujourd’hui';
+  if (jour === minuit(auj - 43200)) return 'Hier';
+  return new Date(jour * 1000).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 }

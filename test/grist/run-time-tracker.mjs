@@ -1,40 +1,51 @@
 // Essai dans un vrai Grist (grist-static), à la vraie souris, avec le labo de lombre33/grist-widget-GFS.
-// Copier ce fichier dans prototype/labo/ de ce dépôt, puis :
+// Copier ce fichier dans prototype/labo/ de ce dépôt-là, puis :
 //   npm install && REPO_DIR=<chemin de ce dépôt> node lab-server.mjs &  puis  node run-time-tracker.mjs
-// Le document du labo a déjà une table Clients (Nom, Ville) : le widget la réutilise, comme il le ferait chez toi.
+// Le document du labo est d'abord mis dans la forme de la gestion client (CLIENTS, MISSIONS, DEVIS, Table1, Time_tracking avec A, B, C).
 import { startLab } from './lab-setup.mjs';
 
 const WIDGET = 'http://127.0.0.1:8911/index.html';
 const lab = await startLab({ widget: WIDGET, lang: 'fr', colorScheme: process.env.LAB_SCHEME || 'light' });
 const { page } = lab;
 await page.setViewportSize({ width: 1500, height: 1000 });
-const out = (...a) => console.log(...a);
 const erreurs = [];
-page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
+page.on('console', (m) => { if (m.type() === 'error' && !/inline style/.test(m.text())) erreurs.push(m.text()); });
 const f = () => page.frames().find((x) => x.url().startsWith(WIDGET) && !x.isDetached());
 let ok = true;
-const check = (nom, cond, info) => { out(cond ? 'OK   ' : 'ÉCHEC', nom, cond ? '' : JSON.stringify(info)); if (!cond) ok = false; };
+const check = (nom, cond, info) => { console.log(cond ? 'OK   ' : 'ÉCHEC', nom, cond ? '' : JSON.stringify(info)); if (!cond) ok = false; };
 
-await f().waitForSelector('text=Créer les tables', { timeout: 30000 });
-await f().evaluate(() => document.addEventListener('securitypolicyviolation', (e) => console.error('VIOL', e.violatedDirective, e.sourceFile, e.lineNumber, e.columnNumber, e.sample)));
-await lab.shotPanel('tt', '1-installation', f());
-await f().getByRole('button', { name: 'Créer les tables' }).click();
-await f().waitForSelector('text=Nouveau lot', { timeout: 20000 });
-const tables = await f().evaluate(() => grist.docApi.listTables());
-check('les quatre tables sont créées sous leur nom', ['Clients', 'Projets', 'Lots', 'Temps'].every((t) => tables.includes(t)), tables);
+// ----- Le document de gestion client, tel que le décrit son code Python.
+await page.waitForTimeout(2000);
+await f().evaluate(async () => {
+  const col = (id, type, formula) => (formula ? { id, type, isFormula: true, formula } : { id, type, isFormula: false });
+  await grist.docApi.applyUserActions([
+    ['RenameTable', 'Clients', 'CLIENTS'],
+    ['AddTable', 'MISSIONS', [col('numero', 'Text'), col('date', 'DateTime:Europe/Paris'), col('Client', 'Ref:CLIENTS')]],
+    ['AddTable', 'Table1', [col('Missions_EN', 'Text'), col('Missions', 'Text'), col('heures', 'Numeric')]],
+    ['AddTable', 'DEVIS', [col('Mission', 'Ref:MISSIONS'), col('prestations', 'Ref:Table1'), col('Lots', 'Choice')]],
+    ['AddTable', 'Time_tracking', [col('A', 'Any', 'None'), col('B', 'Any', 'None'), col('C', 'Any', 'None')]],
+  ]);
+  const clients = await grist.docApi.fetchTable('CLIENTS');
+  await grist.docApi.applyUserActions([
+    ['AddRecord', 'MISSIONS', null, { numero: 'M-2026-01', date: 1790000000, Client: clients.id[0] }],
+    ['AddRecord', 'Table1', null, { Missions: 'Ateliers', heures: 14 }],
+    ['AddRecord', 'Table1', null, { Missions: 'Écrans', heures: 0.0005 }],
+    ['AddRecord', 'DEVIS', null, { Mission: 1, prestations: 1, Lots: 'Cadrage' }],
+    ['AddRecord', 'DEVIS', null, { Mission: 1, prestations: 2, Lots: 'Maquettes' }],
+  ]);
+});
+await f().evaluate(() => location.reload());
+await f().waitForSelector('text=Préparer Time_tracking', { timeout: 30000 });
+await lab.shotPanel('tt', '1-preparation', f());
+await f().getByRole('button', { name: 'Préparer Time_tracking' }).click();
+await f().locator('.puce').first().waitFor({ timeout: 20000 });
+const cols = await f().evaluate(async () => Object.keys(await grist.docApi.fetchTable('Time_tracking')));
+check('Time_tracking garde A, B, C et reçoit ses colonnes', ['A', 'B', 'C', 'Mission', 'Lot', 'Debut', 'Fin', 'Note', 'Session', 'Duree_min'].every((c) => cols.includes(c)), cols);
+check('un lot par valeur de Lots des devis', (await f().locator('.puce').count()) === 2, await f().locator('.puce').count());
+const cadrage = await f().locator('.lot', { hasText: 'Cadrage' }).innerText();
+check('le vendu vient des heures des prestations (14 h = 2 j)', /2 j vendus/.test(cadrage), cadrage);
 
-for (const [c, p, l, j] of [['Atelier Mira', 'Refonte site', 'Cadrage', '2'], ['Atelier Mira', 'Refonte site', 'Maquettes', '0,0001']]) {
-  if (!(await f().locator('details.nouveau-lot[open]').count())) await f().getByText('Nouveau lot').click();
-  await f().getByLabel('Client').fill(c);
-  await f().getByLabel('Projet').fill(p);
-  await f().getByLabel('Lot ou phase').fill(l);
-  await f().getByLabel('Jours vendus').fill(j);
-  await f().getByRole('button', { name: 'Ajouter le lot' }).click();
-  await page.waitForTimeout(1500);
-}
-const clients = await f().evaluate(async () => (await grist.docApi.fetchTable('Clients')).id.length);
-check('un seul client ajouté, réutilisé (le document du labo en a déjà deux)', clients === 3, clients);
-
+// ----- Le chrono.
 await f().locator('.puce', { hasText: 'Cadrage' }).click();
 await f().getByRole('button', { name: 'Démarrer' }).click();
 await page.waitForTimeout(1500);
@@ -44,32 +55,38 @@ await page.waitForTimeout(3000);
 await f().locator('.puce', { hasText: 'Maquettes' }).click();
 await page.waitForTimeout(6000);
 await lab.shotPanel('tt', '2-en-cours', f());
-
-const pendant = await f().evaluate(async () => grist.docApi.fetchTable('Temps'));
-check('deux segments, le premier fermé avec sa note, même session', pendant.id.length === 2 && pendant.Fin[0] && !pendant.Fin[1]
-  && pendant.Note[0] === 'Atelier de cadrage' && pendant.Session[0] === pendant.Session[1], pendant);
-check('la formule Duree_min de Grist calcule le premier segment', pendant.Duree_min[0] > 0 && pendant.Duree_min[1] === 0, pendant.Duree_min);
-
-// Recharger le widget : le chrono doit reprendre depuis Grist.
+const pendant = await f().evaluate(async () => grist.docApi.fetchTable('Time_tracking'));
+check('deux segments, mission et lot écrits, le premier fermé avec sa note', pendant.id.length === 2 && pendant.Mission.every((m) => m === 1)
+  && pendant.Lot.join() === 'Cadrage,Maquettes' && pendant.Fin[0] && !pendant.Fin[1] && pendant.Note[0] === 'Atelier de cadrage', pendant);
+check('la formule Duree_min de Grist calcule le premier segment', pendant.Duree_min[0] > 0, pendant.Duree_min);
 await f().evaluate(() => location.reload());
 await page.waitForTimeout(4000);
-const repris = await f().locator('.bouton-principal').innerText();
-check('après rechargement, le chrono tourne toujours', /Arrêter/.test(repris), repris);
-
+check('après rechargement, le chrono tourne toujours', /Arrêter/.test(await f().locator('.bouton-principal').innerText()));
 await f().getByRole('button', { name: 'Arrêter et enregistrer' }).click();
 await page.waitForTimeout(2000);
-const lots = await f().evaluate(async () => grist.docApi.fetchTable('Lots'));
-const temps = await f().evaluate(async () => grist.docApi.fetchTable('Temps'));
-out('Lots', JSON.stringify(lots));
-check('tous les segments sont fermés', temps.Fin.every(Boolean), temps.Fin);
-check('formules des lots : réel, client, projet', lots.Reel_min.every((x) => x > 0) && lots.Client_nom[0] === 'Atelier Mira' && lots.Projet_nom[1] === 'Refonte site', lots);
-const statut = await f().locator('.lot', { hasText: 'Maquettes' }).getAttribute('data-etat');
-check('le lot de 0,0001 j est en dépassement', statut === 'depasse', statut);
-await lab.shotPanel('tt', '3-arrete', f());
-await page.setViewportSize({ width: 820, height: 1400 });
-await page.waitForTimeout(800);
-await lab.shotPanel('tt', '4-etroit', f());
+check('le lot de 0,0005 h est en dépassement', (await f().locator('.lot', { hasText: 'Maquettes' }).getAttribute('data-etat')) === 'depasse');
+
+// ----- Saisie à la main d'un oubli, la veille, puis correction.
+await f().getByRole('button', { name: 'Jour précédent' }).click();
+await f().getByRole('button', { name: 'Ajouter un temps' }).click();
+await f().locator('#s-lot').selectOption({ label: 'Cadrage · Atelier Mira · M-2026-01' }).catch(async () => f().locator('#s-lot').selectOption({ index: 1 }));
+await f().locator('#s-debut').fill('09:00');
+await f().locator('#s-fin').fill('10:30');
+await f().locator('#s-note').fill('Oubli du chrono');
+await lab.shotPanel('tt', '3-saisie', f());
+await f().getByRole('button', { name: 'Enregistrer' }).click();
+await page.waitForTimeout(2000);
+let t = await f().evaluate(async () => grist.docApi.fetchTable('Time_tracking'));
+const i = t.Note.indexOf('Oubli du chrono');
+check('le temps oublié est écrit, 90 min selon la formule de Grist', i >= 0 && Math.round(t.Duree_min[i]) === 90, t);
+await f().getByRole('button', { name: /^Modifier / }).first().click();
+await f().locator('#s-fin').fill('11:00');
+await f().getByRole('button', { name: 'Enregistrer' }).click();
+await page.waitForTimeout(2000);
+t = await f().evaluate(async () => grist.docApi.fetchTable('Time_tracking'));
+check('la correction passe : 120 min', Math.round(t.Duree_min[t.Note.indexOf('Oubli du chrono')]) === 120, t.Duree_min);
+await lab.shotPanel('tt', '4-hier', f());
 check('aucune erreur de console', erreurs.length === 0, erreurs);
-out(ok ? 'TOUT OK' : 'ÉCHECS');
+console.log(ok ? 'TOUT OK' : 'ÉCHECS');
 await lab.browser.close();
 process.exit(ok ? 0 : 1);

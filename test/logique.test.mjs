@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { hms, hm, jours, nbJours, ecart } from '../js/format.js';
-import { SCHEMA, planifier, planVide, actionsDuPlan } from '../js/schema.js';
+import { SOURCES, COLONNES_TEMPS, planifier, planVide, actionsDuPlan } from '../js/schema.js';
 import { segmentOuvert, demarrer, changer, arreter, noter } from '../js/session.js';
 import { enLignes, minuit, minutesDepuis, libelleLot, construireVue } from '../js/vue.js';
-import { lireFormulaire, trouverClient, trouverProjet, creerLot } from '../js/nouveau-lot.js';
+import { cleLot, champsDuLot, valeursLot, tempsDuChrono, construireModele, SANS_LOT } from '../js/modele.js';
+import { versChamps, depuisChamps, valeursInitiales, actionsSaisie, actionSupprimer } from '../js/saisie.js';
 
 // ---------- format
 
@@ -43,51 +44,100 @@ test('ecart : heures sous un dixième de jour, jours au-delà', () => {
 
 // ---------- schema
 
-const toutExistant = () => Object.fromEntries(SCHEMA.map((d) => [d.table, ['id', ...d.cols.map((c) => c.id)]]));
-
-test('planifier : document vide -> toutes les tables', () => {
-  const plan = planifier({});
-  assert.deepEqual(plan.tables, ['Clients', 'Projets', 'Lots', 'Temps']);
-  assert.equal(plan.colonnes.length, 0);
-  assert.equal(planVide(plan), false);
+const complet = () => ({
+  ...Object.fromEntries(Object.entries(SOURCES).map(([t, c]) => [t, ['id', ...c]])),
+  Time_tracking: ['id', 'A', 'B', 'C', ...COLONNES_TEMPS.map((c) => c.id)],
 });
 
 test('planifier : tout est là -> rien à faire', () => {
-  assert.ok(planVide(planifier(toutExistant())));
+  const plan = planifier(complet());
+  assert.deepEqual(plan.manquantes, []);
+  assert.ok(planVide(plan));
 });
 
-test('planifier : colonne manquante seulement, colonnes inconnues tolérées', () => {
-  const existant = toutExistant();
-  existant.Lots = existant.Lots.filter((c) => c !== 'Ecart_j').concat(['Couleur']);
-  const plan = planifier(existant);
-  assert.deepEqual(plan.tables, []);
-  assert.deepEqual(plan.colonnes.map((x) => `${x.table}.${x.col.id}`), ['Lots.Ecart_j']);
+test('planifier : Time_tracking avec A, B, C seulement -> colonnes ajoutées, A B C gardées', () => {
+  const ex = complet();
+  ex.Time_tracking = ['id', 'A', 'B', 'C'];
+  const plan = planifier(ex);
+  assert.equal(plan.table, false);
+  assert.deepEqual(plan.colonnes.map((c) => c.id), COLONNES_TEMPS.map((c) => c.id));
+  const actions = actionsDuPlan(plan);
+  assert.ok(actions.every((a) => a[0] === 'AddColumn' && a[1] === 'Time_tracking'));
+  assert.deepEqual(actions.find((a) => a[2] === 'Duree_min')[3].isFormula, true);
+  assert.deepEqual(actions.find((a) => a[2] === 'Mission')[3], { type: 'Ref:MISSIONS', isFormula: false });
 });
 
-test('actionsDuPlan : AddTable dans l’ordre, formules marquées', () => {
-  const actions = actionsDuPlan(planifier({ Clients: ['id', 'Nom'] }));
-  assert.deepEqual(actions.map((a) => a[1]), ['Projets', 'Lots', 'Temps']);
-  const temps = actions.find((a) => a[1] === 'Temps')[2];
-  const duree = temps.find((c) => c.id === 'Duree_min');
-  assert.equal(duree.isFormula, true);
-  assert.match(duree.formula, /total_seconds/);
-  assert.equal(temps.find((c) => c.id === 'Debut').isFormula, false);
+test('planifier : Time_tracking absente -> AddTable', () => {
+  const ex = complet();
+  delete ex.Time_tracking;
+  const actions = actionsDuPlan(planifier(ex));
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0][0], 'AddTable');
+  assert.deepEqual(actions[0][2].map((c) => c.id), COLONNES_TEMPS.map((c) => c.id));
 });
 
-test('actionsDuPlan : AddColumn pour une colonne manquante', () => {
-  const existant = toutExistant();
-  existant.Temps = existant.Temps.filter((c) => c !== 'Note');
-  assert.deepEqual(actionsDuPlan(planifier(existant)), [
-    ['AddColumn', 'Temps', 'Note', { type: 'Text', isFormula: false }],
-  ]);
+test('planifier : sources manquantes listées, rien créé chez elles', () => {
+  const ex = complet();
+  delete ex.DEVIS;
+  ex.Table1 = ['id', 'Missions'];
+  const plan = planifier(ex);
+  assert.deepEqual(plan.manquantes, ['table DEVIS', 'colonne Table1.heures']);
 });
 
-test('les références pointent vers des tables du schéma créées avant elles', () => {
-  const ordre = SCHEMA.map((d) => d.table);
-  SCHEMA.forEach((d, i) => d.cols.filter((c) => c.type.startsWith('Ref:')).forEach((c) => {
-    const cible = c.type.slice(4);
-    assert.ok(ordre.indexOf(cible) > -1 && ordre.indexOf(cible) < i, `${d.table}.${c.id}`);
-  }));
+// ---------- modèle (gestion client -> lots)
+
+test('clé de lot et champs', () => {
+  assert.equal(cleLot(3, 'Maquettes'), '3|Maquettes');
+  assert.equal(cleLot(3, null), '3|');
+  assert.deepEqual(champsDuLot('3|Lot | avec barre'), { Mission: 3, Lot: 'Lot | avec barre' });
+  assert.deepEqual(champsDuLot('7|'), { Mission: 7, Lot: '' });
+});
+
+test('valeursLot : choix simple, multiple ou vide', () => {
+  assert.deepEqual(valeursLot('A'), ['A']);
+  assert.deepEqual(valeursLot(['L', 'A', 'B']), ['A', 'B']);
+  assert.deepEqual(valeursLot(null), ['']);
+  assert.deepEqual(valeursLot(''), ['']);
+});
+
+test('tempsDuChrono : lignes sans mission ignorées (A, B, C)', () => {
+  const t = tempsDuChrono([{ id: 1, Mission: 2, Lot: 'X', Debut: 1 }, { id: 2, Mission: 0, A: null }]);
+  assert.deepEqual(t.map((r) => [r.id, r.Lot]), [[1, '2|X']]);
+});
+
+const SRC = {
+  clients: [{ id: 1, Nom: 'Atelier Mira' }],
+  missions: [{ id: 10, numero: 'M-001', date: 100, Client: 1 }, { id: 11, numero: 'M-002', date: 200, Client: 0 }],
+  prestations: [{ id: 5, heures: 14 }, { id: 6, heures: 7 }],
+  devis: [
+    { id: 1, Mission: 10, prestations: 5, Lots: 'Maquettes' },
+    { id: 2, Mission: 10, prestations: 6, Lots: 'Maquettes' },
+    { id: 3, Mission: 10, prestations: 6, Lots: 'Cadrage' },
+    { id: 4, Mission: 11, prestations: 6, Lots: '' },
+    { id: 5, Mission: 0, prestations: 6, Lots: 'X' },
+  ],
+  temps: [{ id: 1, Mission: 10, Lot: 'Maquettes', Debut: 1000, Fin: 4600, Duree_min: 60 }, { id: 2, Mission: 10, Lot: 'Hors devis', Debut: 5000, Fin: null, Duree_min: 0 }],
+};
+
+test('construireModele : un lot par mission et valeur de Lots, vendu = heures des prestations', () => {
+  const { lots, temps } = construireModele(SRC);
+  const parId = Object.fromEntries(lots.map((l) => [l.id, l]));
+  assert.equal(parId['10|Maquettes'].Jours_vendus, 3); // 14 h + 7 h
+  assert.equal(parId['10|Maquettes'].Reel_min, 60);
+  assert.equal(parId['10|Maquettes'].Client_nom, 'Atelier Mira');
+  assert.equal(parId['10|Maquettes'].Projet_nom, 'M-001');
+  assert.equal(parId['10|Cadrage'].Jours_vendus, 1);
+  assert.equal(parId['11|'].Nom, SANS_LOT);
+  assert.equal(parId['11|'].Client_nom, '');
+  assert.equal(parId['10|Hors devis'].Jours_vendus, 0, 'un lot qui n’existe que par son temps est montré');
+  assert.equal(lots[0].id, '11|', 'mission la plus récente d’abord');
+  assert.equal(lots.length, 4);
+  assert.equal(temps[1].Lot, '10|Hors devis');
+});
+
+test('construireModele : choix multiple compte les heures dans chaque lot', () => {
+  const { lots } = construireModele({ ...SRC, devis: [{ id: 1, Mission: 10, prestations: 6, Lots: ['L', 'A', 'B'] }], temps: [] });
+  assert.deepEqual(lots.map((l) => [l.Nom, l.Jours_vendus]), [['A', 1], ['B', 1]]);
 });
 
 // ---------- session
@@ -106,30 +156,30 @@ test('segmentOuvert : le plus récent sans fin', () => {
 });
 
 test('demarrer', () => {
-  assert.deepEqual(demarrer(7, T + 0.5), [['AddRecord', 'Temps', null, { Lot: 7, Debut: T + 0.5, Session: T }]]);
+  assert.deepEqual(demarrer('7|Cadrage', T + 0.5), [['AddRecord', 'Time_tracking', null, { Mission: 7, Lot: 'Cadrage', Debut: T + 0.5, Session: T }]]);
   assert.throws(() => demarrer(null, T));
 });
 
 test('changer : ferme le segment et en ouvre un dans la même session', () => {
-  const ouvert = { id: 9, Lot: 1, Debut: T, Session: T };
-  assert.deepEqual(changer(ouvert, 2, T + 600), [
-    ['UpdateRecord', 'Temps', 9, { Fin: T + 600 }],
-    ['AddRecord', 'Temps', null, { Lot: 2, Debut: T + 600, Session: T }],
+  const ouvert = { id: 9, Lot: '1|A', Debut: T, Session: T };
+  assert.deepEqual(changer(ouvert, '1|B', T + 600), [
+    ['UpdateRecord', 'Time_tracking', 9, { Fin: T + 600 }],
+    ['AddRecord', 'Time_tracking', null, { Mission: 1, Lot: 'B', Debut: T + 600, Session: T }],
   ]);
 });
 
 test('changer : même lot ou rien d’ouvert -> rien', () => {
-  assert.deepEqual(changer({ id: 9, Lot: 1, Debut: T, Session: T }, 1, T + 5), []);
+  assert.deepEqual(changer({ id: 9, Lot: '1|A', Debut: T, Session: T }, '1|A', T + 5), []);
   assert.deepEqual(changer(null, 1, T), []);
 });
 
 test('changer : session absente reprise du début', () => {
-  const a = changer({ id: 9, Lot: 1, Debut: T + 0.7, Session: null }, 2, T + 10);
+  const a = changer({ id: 9, Lot: '1|A', Debut: T + 0.7, Session: null }, '2|', T + 10);
   assert.equal(a[1][3].Session, T);
 });
 
 test('arreter : fin jamais avant le début (horloge décalée)', () => {
-  assert.deepEqual(arreter({ id: 3, Debut: T }, T - 5), [['UpdateRecord', 'Temps', 3, { Fin: T }]]);
+  assert.deepEqual(arreter({ id: 3, Debut: T }, T - 5), [['UpdateRecord', 'Time_tracking', 3, { Fin: T }]]);
   assert.deepEqual(arreter(null, T), []);
 });
 
@@ -137,7 +187,7 @@ test('noter', () => {
   const o = { id: 3, Note: 'a' };
   assert.deepEqual(noter(o, 'a'), []);
   assert.deepEqual(noter({ id: 3 }, ''), []);
-  assert.deepEqual(noter(o, 'b'), [['UpdateRecord', 'Temps', 3, { Note: 'b' }]]);
+  assert.deepEqual(noter(o, 'b'), [['UpdateRecord', 'Time_tracking', 3, { Note: 'b' }]]);
   assert.deepEqual(noter(null, 'b'), []);
 });
 
@@ -235,43 +285,59 @@ test('construireVue : journée complète', () => {
   assert.match(v.jour.message, /complète/);
 });
 
-// ---------- nouveau lot
+// ---------- saisie à la main
 
-test('lireFormulaire', () => {
-  assert.ok(lireFormulaire({ client: '', projet: 'p', lot: 'l', jours: '1' }).erreur);
-  assert.ok(lireFormulaire({ client: 'c', projet: 'p', lot: 'l', jours: '-1' }).erreur);
-  assert.ok(lireFormulaire({ client: 'c', projet: 'p', lot: 'l', jours: 'abc' }).erreur);
-  assert.deepEqual(lireFormulaire({ client: ' c ', projet: 'p', lot: 'l', jours: '2,5' }), { client: 'c', projet: 'p', lot: 'l', jours: 2.5 });
+test('versChamps et depuisChamps : aller-retour en heure locale', () => {
+  const sec = new Date(2026, 10, 18, 9, 5).getTime() / 1000;
+  assert.deepEqual(versChamps(sec), { date: '2026-11-18', heure: '09:05' });
+  assert.equal(depuisChamps('2026-11-18', '09:05'), sec);
+  assert.equal(depuisChamps('2026-11-18', ''), null);
+  assert.equal(depuisChamps('18/11/2026', '09:05'), null);
+  assert.deepEqual(versChamps(null), { date: '', heure: '' });
 });
 
-test('trouver client et projet sans tenir compte de la casse ni des accents', () => {
-  const clients = [{ id: 1, Nom: 'Élan' }];
-  assert.equal(trouverClient(clients, ' elan ').id, 1);
-  assert.equal(trouverClient(clients, 'autre'), null);
-  const projets = [{ id: 4, Nom: 'Site', Client: 1 }];
-  assert.equal(trouverProjet(projets, 1, 'SITE').id, 4);
-  assert.equal(trouverProjet(projets, 2, 'Site'), null);
+const S = (h, m = 0) => new Date(2026, 10, 18, h, m).getTime() / 1000;
+
+test('valeursInitiales : ligne existante ou nouveau temps', () => {
+  assert.deepEqual(valeursInitiales({ id: 4, Lot: '1|A', Debut: S(9), Fin: S(10, 30), Note: 'n' }, 0, null),
+    { id: 4, lot: '1|A', date: '2026-11-18', debut: '09:00', fin: '10:30', note: 'n' });
+  assert.deepEqual(valeursInitiales(null, S(0), '1|B'), { id: null, lot: '1|B', date: '2026-11-18', debut: '', fin: '', note: '' });
 });
 
-test('creerLot : crée seulement ce qui manque', async () => {
-  const appels = [];
-  let n = 100;
-  const appliquer = async (a) => { appels.push(a[0]); return { retValues: [++n] }; };
-  const id = await creerLot({ client: 'Élan', projet: 'Neuf', lot: 'Lot A', jours: 3 },
-    { clients: [{ id: 1, Nom: 'elan' }], projets: [] }, appliquer);
-  assert.equal(id, 102);
-  assert.deepEqual(appels, [
-    ['AddRecord', 'Projets', null, { Nom: 'Neuf', Client: 1 }],
-    ['AddRecord', 'Lots', null, { Nom: 'Lot A', Projet: 101, Jours_vendus: 3 }],
-  ]);
+test('actionsSaisie : nouveau temps', () => {
+  const r = actionsSaisie({ lot: '1|A', date: '2026-11-18', debut: '09:00', fin: '10:30', note: ' oubli ' }, { temps: [] });
+  assert.deepEqual(r.actions, [['AddRecord', 'Time_tracking', null, { Mission: 1, Lot: 'A', Debut: S(9), Fin: S(10, 30), Note: 'oubli', Session: S(9) }]]);
 });
 
-test('creerLot : tout est nouveau', async () => {
-  const appels = [];
-  let n = 0;
-  await creerLot({ client: 'C', projet: 'P', lot: 'L', jours: 1 }, { clients: [], projets: [] },
-    async (a) => { appels.push(a[0][1]); return { retValues: [++n] }; });
-  assert.deepEqual(appels, ['Clients', 'Projets', 'Lots']);
+test('actionsSaisie : correction d’une ligne, fin après minuit', () => {
+  const ligne = { id: 4, Lot: '1|A', Debut: S(9), Fin: null };
+  const r = actionsSaisie({ lot: '2|B', date: '2026-11-18', debut: '23:00', fin: '01:00', note: '' }, { temps: [ligne], ligne });
+  assert.deepEqual(r.actions, [['UpdateRecord', 'Time_tracking', 4, { Mission: 2, Lot: 'B', Debut: S(23), Fin: S(25), Note: '' }]]);
+});
+
+test('actionsSaisie : refus lisibles', () => {
+  assert.match(actionsSaisie({ lot: '', date: '2026-11-18', debut: '09:00' }, { temps: [] }).erreur, /lot/);
+  assert.match(actionsSaisie({ lot: '1|A', date: '', debut: '09:00' }, { temps: [] }).erreur, /début/);
+  assert.match(actionsSaisie({ lot: '1|A', date: '2026-11-18', debut: '09:00', fin: '9h' }, { temps: [] }).erreur, /fin/);
+  const ouvert = { id: 8, Debut: S(8), Fin: null };
+  assert.match(actionsSaisie({ lot: '1|A', date: '2026-11-18', debut: '09:00', fin: '' }, { temps: [ouvert] }).erreur, /chrono tourne/);
+  // corriger le segment ouvert lui-même sans fin reste permis
+  assert.ok(actionsSaisie({ lot: '1|A', date: '2026-11-18', debut: '07:30', fin: '' }, { temps: [ouvert], ligne: ouvert }).actions);
+});
+
+test('actionSupprimer', () => {
+  assert.deepEqual(actionSupprimer({ id: 3 }), [['RemoveRecord', 'Time_tracking', 3]]);
+  assert.deepEqual(actionSupprimer(null), []);
+});
+
+test('entrées d’un autre jour, avec plage horaire', async () => {
+  const { entreesDuJour, libelleJour } = await import('../js/vue.js');
+  const hier = minuit(S(12)) - 86400;
+  const temps = [{ id: 1, Lot: 'x', Debut: hier + 9 * 3600, Fin: hier + 10 * 3600 }, { id: 2, Lot: 'x', Debut: S(9), Fin: S(9, 30) }];
+  const e = entreesDuJour(temps, new Map(), S(12), hier);
+  assert.deepEqual(e.map((x) => [x.id, x.duree, x.plage]), [[1, '1 h 00', '09:00 – 10:00']]);
+  assert.equal(libelleJour(hier, S(12)), 'Hier');
+  assert.equal(libelleJour(minuit(S(12)), S(12)), 'Aujourd’hui');
 });
 
 test('serie : jours consécutifs jusqu’à aujourd’hui ou hier', async () => {

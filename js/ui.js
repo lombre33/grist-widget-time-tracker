@@ -6,8 +6,11 @@ const I = {
   jouer: 'M8 5v14l11-7z',
   stop: 'M6 6h12v12H6z',
   flamme: 'M12 2c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5.5 1-8.5z',
-  plus: 'M12 5v14M5 12h14',
   table: 'M3 5h18v14H3zM3 10h18M9 10v9',
+  gauche: 'M15 18l-6-6 6-6',
+  droite: 'M9 18l6-6-6-6',
+  plus: 'M12 5v14M5 12h14',
+  crayon: 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4',
 };
 
 const dateDuJour = () => new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -49,7 +52,7 @@ function minuteur(vue) {
     el('div', { class: 'ligne-titre' },
       el('h2', { class: 'surtitre', texte: 'Sur quoi tu travailles' }),
       el('span', { class: 'discret petit', texte: vue.enCours ? 'Change de lot pour marquer un milestone' : 'Choisis un lot puis démarre' })),
-    vue.lots.length ? puces(vue) : el('p', { class: 'vide', texte: 'Aucun lot actif. Ajoute ton premier lot plus bas.' }),
+    vue.lots.length ? puces(vue) : el('p', { class: 'vide', texte: 'Aucun lot : ajoute une ligne de devis avec sa mission et son lot (table DEVIS).' }),
     el('div', { class: 'chrono' },
       el('div', { class: 'courant' },
         vue.enCours ? el('span', { class: 'point-vivant', 'aria-hidden': 'true' }) : null,
@@ -100,50 +103,69 @@ function carteLots(vue) {
 }
 
 function carteEntrees(vue) {
+  const estAujourdhui = vue.jourVuTxt === 'Aujourd’hui';
   return el('section', { class: 'carte entrees' },
-    el('h2', { texte: 'Entrées du jour' }),
+    el('div', { class: 'ligne-titre' },
+      el('h2', { texte: 'Entrées' }),
+      el('div', { class: 'nav-jour' },
+        el('button', { type: 'button', class: 'icone-btn', 'data-action': 'jour-prec', 'aria-label': 'Jour précédent' }, icone(I.gauche)),
+        el('span', { class: 'jour-vu', texte: vue.jourVuTxt }),
+        el('button', { type: 'button', class: 'icone-btn', 'data-action': 'jour-suiv', 'aria-label': 'Jour suivant', disabled: estAujourdhui }, icone(I.droite)))),
     vue.entrees.length
       ? el('ul', {}, vue.entrees.map((e, i) => el('li', {},
-        el('div', { class: 'seg-txt' }, el('span', { class: 'fort', texte: e.libelle }), el('span', { class: 'discret', texte: e.note })),
-        el('span', { class: 'fort chiffres', 'data-live': `entrees.${i}.duree`, texte: e.duree }))))
-      : el('p', { class: 'vide', texte: 'Rien encore aujourd’hui.' }));
+        el('div', { class: 'seg-txt' },
+          el('span', { class: 'fort', texte: e.libelle }),
+          el('span', { class: 'discret', texte: `${e.plage} · ${e.note}` })),
+        el('span', { class: 'fort chiffres', 'data-live': `entrees.${i}.duree`, texte: e.duree }),
+        el('button', { type: 'button', class: 'icone-btn', 'data-action': 'modifier', 'data-id': e.id, 'aria-label': `Modifier ${e.libelle}, ${e.plage}` }, icone(I.crayon, { taille: 18 })))))
+      : el('p', { class: 'vide', texte: estAujourdhui ? 'Rien encore aujourd’hui.' : 'Aucun temps ce jour-là.' }),
+    el('button', { type: 'button', class: 'bouton-secondaire', 'data-action': 'ajouter-temps' }, icone(I.plus, { taille: 18 }), 'Ajouter un temps'));
 }
 
-function champ(id, libelle, attrs = {}) {
-  return el('div', { class: 'champ' },
-    el('label', { for: id, texte: libelle }),
-    el('input', { id, name: id, type: 'text', autocomplete: 'off', ...attrs }));
+function champSaisie(id, libelle, attrs) {
+  return el('div', { class: 'champ' }, el('label', { for: id, texte: libelle }), el('input', { id, name: id, ...attrs }));
 }
 
-function formulaireLot(donnees, ouvert, erreur) {
-  const clients = el('datalist', { id: 'liste-clients' }, donnees.clients.map((c) => el('option', { value: c.Nom || '' })));
-  const projets = el('datalist', { id: 'liste-projets' }, donnees.projets.map((p) => el('option', { value: p.Nom || '' })));
-  return el('details', { class: 'carte nouveau-lot', open: ouvert },
-    el('summary', {}, icone(I.plus), 'Nouveau lot'),
-    el('form', { 'data-action': 'creer-lot', novalidate: true },
-      clients, projets,
+/** Fenêtre de saisie ou de correction d'un temps. */
+function fenetreSaisie(vue, saisie) {
+  const v = saisie.valeurs;
+  const options = vue.tousLots.map((l) => el('option', { value: l.id, selected: l.id === v.lot, texte: l.libelle }));
+  return el('dialog', { class: 'fenetre', 'aria-labelledby': 'titre-saisie' },
+    el('form', { 'data-action': 'enregistrer-temps', novalidate: true },
+      el('h2', { id: 'titre-saisie', texte: v.id ? 'Corriger un temps' : 'Ajouter un temps' }),
+      el('div', { class: 'champ' },
+        el('label', { for: 's-lot', texte: 'Lot' }),
+        el('select', { id: 's-lot', name: 's-lot' }, el('option', { value: '', texte: '— Choisir un lot —' }), options)),
       el('div', { class: 'grille-champs' },
-        champ('f-client', 'Client', { list: 'liste-clients', required: true }),
-        champ('f-projet', 'Projet', { list: 'liste-projets', required: true }),
-        champ('f-lot', 'Lot ou phase', { required: true, placeholder: 'Maquettes' }),
-        champ('f-jours', 'Jours vendus', { inputmode: 'decimal', required: true, placeholder: '4' })),
-      erreur ? el('p', { class: 'erreur', role: 'alert', texte: erreur }) : null,
+        champSaisie('s-date', 'Date', { type: 'date', value: v.date }),
+        champSaisie('s-debut', 'Début', { type: 'time', value: v.debut }),
+        champSaisie('s-fin', 'Fin', { type: 'time', value: v.fin })),
+      el('p', { class: 'discret petit', texte: 'Fin vide : le chrono tourne depuis l’heure de début. Fin avant le début : elle tombe le lendemain.' }),
+      champSaisie('s-note', 'Note', { type: 'text', value: v.note, autocomplete: 'off' }),
+      saisie.erreur ? el('p', { class: 'erreur', role: 'alert', texte: saisie.erreur }) : null,
       el('div', { class: 'actions' },
-        el('button', { type: 'submit', class: 'bouton' }, 'Ajouter le lot'),
-        el('span', { class: 'discret petit' }, 'Le client et le projet sont créés s’ils n’existent pas. Tu peux tout modifier dans les tables Grist.'))));
+        el('button', { type: 'submit', class: 'bouton' }, 'Enregistrer'),
+        el('button', { type: 'button', class: 'bouton-secondaire', 'data-action': 'annuler-saisie' }, 'Annuler'),
+        v.id ? el('button', { type: 'button', class: `bouton-danger${saisie.confirmer ? ' confirmer' : ''}`, 'data-action': 'supprimer-temps' },
+          saisie.confirmer ? 'Confirmer la suppression' : 'Supprimer') : null)));
 }
 
-/** Écran principal. */
-export function principal(racine, vue, donnees, etat) {
+export function principal(racine, vue, etat) {
   const focus = document.activeElement?.id;
   const saisie = focus === 'note' ? document.activeElement.value : null;
+  const fenetre = etat.saisie ? fenetreSaisie(vue, etat.saisie) : null;
   racine.replaceChildren(
     entete(etat.serie),
     el('div', { class: 'grille' },
       minuteur(vue),
       el('div', { class: 'colonne' }, carteJour(vue), carteLots(vue), carteEntrees(vue))),
-    formulaireLot(donnees, etat.formulaireOuvert, etat.erreurFormulaire));
+    fenetre);
   rafraichirVivant(racine, vue);
+  if (fenetre) {
+    fenetre.showModal();
+    (fenetre.querySelector('.erreur') ? fenetre.querySelector('#s-lot') : fenetre.querySelector(etat.saisie.valeurs.lot ? '#s-debut' : '#s-lot')).focus();
+    return;
+  }
   if (focus === 'note' && !racine.querySelector('#note').disabled) {
     const n = racine.querySelector('#note');
     n.value = saisie;
@@ -156,16 +178,16 @@ export const vivant = rafraichirVivant;
 /** Écran d'installation : ce que le widget va créer, et le bouton qui le fait. */
 export function installation(racine, plan, erreur) {
   const lignes = [
-    ...plan.tables.map((t) => `Table ${t}`),
-    ...plan.colonnes.map((c) => `Colonne ${c.col.id} dans ${c.table}`),
+    ...(plan.table ? ['La table Time_tracking'] : []),
+    ...plan.colonnes.map((c) => `La colonne ${c.id} dans Time_tracking`),
   ];
   racine.replaceChildren(el('section', { class: 'carte installation' },
     el('h1', {}, icone(I.table), ' Préparer le document'),
-    el('p', { texte: 'Le suivi du temps range ses données dans des tables de ce document. Il va créer :' }),
+    el('p', { texte: 'Le suivi du temps lit tes missions et tes devis, et range le temps dans la table Time_tracking. Il va créer :' }),
     el('ul', {}, lignes.map((l) => el('li', { texte: l }))),
-    el('p', { class: 'discret', texte: 'Rien d’existant n’est modifié ni supprimé. Les calculs (durées, réel par lot, écart) sont des formules Grist que tu peux lire et réutiliser.' }),
+    el('p', { class: 'discret', texte: 'Rien d’existant n’est modifié ni supprimé : les colonnes déjà là (A, B, C…) restent. La durée de chaque segment est une formule Grist.' }),
     erreur ? el('p', { class: 'erreur', role: 'alert', texte: erreur }) : null,
-    el('button', { type: 'button', class: 'bouton-principal', 'data-action': 'installer' }, 'Créer les tables')));
+    el('button', { type: 'button', class: 'bouton-principal', 'data-action': 'installer' }, 'Préparer Time_tracking')));
 }
 
 /** Message plein écran (chargement, accès manquant, erreur). */
