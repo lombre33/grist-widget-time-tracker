@@ -54,6 +54,10 @@ async function parcours(nav, s) {
   assert.equal(await page.locator('.puce').count(), 2, 'une prestation par ligne de devis');
   assert.match(await page.locator('.lot', { hasText: 'Écrans' }).innerText(), /3 j vendus/, '21 h = 3 j');
   assert.equal(cols.Time_tracking.length, 0);
+  assert.deepEqual(await page.locator('.minuteur .groupe-titre').allInnerTexts(), ['CADRAGE', 'MAQUETTES'], 'un titre par lot de la mission');
+  await page.getByLabel('Mission').selectOption({ label: 'Atelier Mira · M-2025-09' });
+  assert.deepEqual(await page.locator('.puce').allInnerTexts(), ['Recette']);
+  await page.getByLabel('Mission').selectOption({ label: 'Atelier Mira · M-2026-01' });
 
   await page.locator('.puce', { hasText: 'Ateliers' }).click();
   await page.getByRole('button', { name: 'Démarrer' }).click();
@@ -85,7 +89,7 @@ async function parcours(nav, s) {
   await page.setViewportSize({ width: 1200, height: 900 });
   await page.getByRole('button', { name: 'Jour précédent' }).click();
   await page.getByRole('button', { name: 'Ajouter un temps' }).click();
-  await page.getByLabel('Prestation', { exact: true }).selectOption({ label: 'Ateliers · Atelier Mira · M-2026-01 · Cadrage' });
+  await page.getByLabel('Prestation', { exact: true }).selectOption({ label: 'Ateliers · Cadrage' });
   await page.getByLabel('Début').fill('09:00');
   await page.getByLabel('Fin', { exact: true }).fill('10:30');
   await page.locator('#s-note').fill('Oubli du chrono');

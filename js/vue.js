@@ -27,7 +27,7 @@ export function minutesDepuis(r, depuis, maintenant) {
 
 export function libelleLot(lot) {
   if (!lot) return 'Prestation supprimée';
-  const contexte = [lot.Client_nom, lot.Projet_nom].filter(Boolean).join(' · ');
+  const contexte = [lot.Client_nom, lot.Mission_nom ?? lot.Projet_nom].filter(Boolean).join(' · ');
   return contexte ? `${lot.Nom || 'Sans nom'} · ${contexte}` : lot.Nom || 'Sans nom';
 }
 
@@ -48,6 +48,7 @@ function etatLot(lot, ouvert, maintenant, minParJour) {
   if (depasse) etat = 'depasse';
   else if (ratio > 0.85) etat = 'attention';
   return {
+    reelMin: reel,
     reelTxt: jours(reel, minParJour),
     base: Math.round(base * 10) / 10,
     depasse: depasse ? Math.round((100 - base) * 10) / 10 : 0,
@@ -112,8 +113,9 @@ function minutesEntre(r, de, a, maintenant) {
  * @param {number} maintenant  secondes
  * @param {number|string|null} choix  lot choisi quand le chrono est arrêté
  * @param {number|null} jourVu  minuit du jour dont on liste les temps (aujourd'hui par défaut)
+ * @param {{ mission?: number|null, minParJour?: number }} options  mission affichée (sinon celle de la prestation courante)
  */
-export function construireVue(donnees, maintenant, choix, jourVu = null, minParJour = MIN_PAR_JOUR) {
+export function construireVue(donnees, maintenant, choix, jourVu = null, { mission = null, minParJour = MIN_PAR_JOUR } = {}) {
   const { lots, temps } = donnees;
   const parId = new Map(lots.map((l) => [l.id, l]));
   const ouvert = segmentOuvert(temps);
@@ -127,20 +129,47 @@ export function construireVue(donnees, maintenant, choix, jourVu = null, minParJ
     lotCourant,
     libelleCourant: lotCourant ? libelleLot(parId.get(lotCourant)) : 'Aucune prestation',
     horloge: ouvert ? hms(maintenant - depart) : hms(0),
-    lots: actifs.map((l) => ({
+    ...parMission(actifs, parId.get(lotCourant), mission, (l) => ({
       id: l.id,
       nom: l.Nom || 'Sans nom',
-      contexte: [l.Client_nom, l.Projet_nom].filter(Boolean).join(' · '),
+      lotTxt: l.Lot_txt || '',
       venduTxt: `${nbJours(l.Jours_vendus)} vendus`,
       choisi: l.id === lotCourant,
       ...etatLot(l, ouvert, maintenant, minParJour),
-    })),
+    }), minParJour),
     segments: segmentsDeSession(temps, ouvert, parId, maintenant),
     jour: vueJour(temps, maintenant, minParJour),
     jourVu: jourVu ?? minuit(maintenant),
     jourVuTxt: libelleJour(jourVu ?? minuit(maintenant), maintenant),
     entrees: entreesDuJour(temps, parId, maintenant, jourVu ?? minuit(maintenant)),
-    tousLots: lots.map((l) => ({ id: l.id, libelle: libelleLot(l), termine: Boolean(l.Termine) })),
+    tousLots: lots.map((l) => ({
+      id: l.id, libelle: libelleLot(l), mission: libelleMission(l), court: [l.Nom || 'Sans nom', l.Lot_txt].filter(Boolean).join(' · '),
+      termine: Boolean(l.Termine),
+    })),
+  };
+}
+
+const libelleMission = (l) => [l.Client_nom, l.Mission_nom].filter(Boolean).join(' · ');
+
+/**
+ * Une mission à la fois : la liste des missions, et les prestations de celle qu'on regarde, rangées par lot
+ * (les titres de lot n'apparaissent que si la mission en a plusieurs) avec le total de la mission.
+ */
+function parMission(actifs, courant, mission, versLot, minParJour) {
+  const missions = [];
+  for (const l of actifs) if (!missions.some((m) => m.id === l.Mission)) missions.push({ id: l.Mission, libelle: libelleMission(l) });
+  const vue = missions.some((m) => m.id === mission) ? mission : (courant ? courant.Mission : missions[0]?.id);
+  const lots = actifs.filter((l) => l.Mission === vue).map(versLot);
+  const titres = [...new Set(lots.map((l) => l.lotTxt))];
+  const reel = lots.reduce((t, l) => t + l.reelMin, 0);
+  const vendu = actifs.filter((l) => l.Mission === vue).reduce((t, l) => t + (Number(l.Jours_vendus) || 0), 0);
+  return {
+    missions: missions.map((m) => ({ ...m, choisie: m.id === vue })),
+    missionVue: vue,
+    missionTxt: missions.find((m) => m.id === vue)?.libelle || '',
+    lots,
+    groupes: titres.map((t) => ({ titre: titres.length > 1 ? t || 'Sans lot' : '', lots: lots.filter((l) => l.lotTxt === t) })),
+    totalMission: { reelTxt: jours(reel, minParJour), venduTxt: `${nbJours(vendu)} vendus` },
   };
 }
 

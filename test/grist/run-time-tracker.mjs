@@ -69,7 +69,7 @@ check('la prestation de 0,0005 h est en dépassement', (await f().locator('.lot'
 // ----- Saisie à la main d'un oubli, la veille, puis correction.
 await f().getByRole('button', { name: 'Jour précédent' }).click();
 await f().getByRole('button', { name: 'Ajouter un temps' }).click();
-await f().locator('#s-lot').selectOption({ label: 'Ateliers · Atelier Mira · M-2026-01 · Cadrage' }).catch(async () => f().locator('#s-lot').selectOption({ index: 1 }));
+await f().locator('#s-lot').selectOption({ label: 'Ateliers · Cadrage' }).catch(async () => f().locator('#s-lot').selectOption({ index: 1 }));
 await f().locator('#s-debut').fill('09:00');
 await f().locator('#s-fin').fill('10:30');
 await f().locator('#s-note').fill('Oubli du chrono');

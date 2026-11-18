@@ -15,6 +15,7 @@ const etat = {
   donnees: null,
   plan: null,
   choix: null,
+  mission: null, // mission affichée ; null = celle de la prestation courante
   occupe: false,
   erreurInstallation: null,
   jourVu: null, // minuit du jour listé dans « Entrées » ; null = aujourd'hui
@@ -22,7 +23,7 @@ const etat = {
 };
 
 const maintenant = () => Date.now() / 1000;
-const vue = () => construireVue(etat.donnees, maintenant(), etat.choix, etat.jourVu);
+const vue = () => construireVue(etat.donnees, maintenant(), etat.choix, etat.jourVu, { mission: etat.mission });
 
 function signaler(texte) {
   alerte.textContent = texte;
@@ -198,6 +199,11 @@ racine.addEventListener('click', (ev) => {
 });
 
 racine.addEventListener('change', (ev) => {
+  if (ev.target.id === 'mission') {
+    etat.mission = Number(ev.target.value);
+    dessiner();
+    return;
+  }
   if (ev.target.id !== 'note') return;
   agir(noter(segmentOuvert(etat.donnees.temps), ev.target.value.trim()));
 });

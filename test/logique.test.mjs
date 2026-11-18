@@ -210,6 +210,23 @@ const LOTS = [
   { id: 3, Nom: 'Ancien', Jours_vendus: 1, Reel_min: 0, Termine: true },
 ];
 
+test('construireVue : une mission à la fois, prestations rangées par lot', () => {
+  const L = [
+    { id: 1, Nom: 'A', Mission: 10, Mission_nom: 'M-1', Client_nom: 'Mira', Lot_txt: 'included', Jours_vendus: 1, Reel_min: 210 },
+    { id: 2, Nom: 'B', Mission: 10, Mission_nom: 'M-1', Client_nom: 'Mira', Lot_txt: 'Options', Jours_vendus: 1, Reel_min: 0 },
+    { id: 3, Nom: 'C', Mission: 20, Mission_nom: 'M-2', Client_nom: '', Lot_txt: 'included', Jours_vendus: 2, Reel_min: 0 },
+  ];
+  let v = construireVue({ lots: L, temps: [] }, T, 3);
+  assert.deepEqual(v.missions.map((m) => [m.libelle, m.choisie]), [['Mira · M-1', false], ['M-2', true]], 'la mission de la prestation choisie');
+  assert.deepEqual(v.lots.map((l) => l.id), [3]);
+  assert.deepEqual(v.groupes.map((g) => g.titre), [''], 'pas de titre quand la mission n’a qu’un lot');
+  v = construireVue({ lots: L, temps: [] }, T, 3, null, { mission: 10 });
+  assert.deepEqual(v.groupes.map((g) => [g.titre, g.lots.map((l) => l.id)]), [['included', [1]], ['Options', [2]]]);
+  assert.equal(v.missionTxt, 'Mira · M-1');
+  assert.deepEqual(v.totalMission, { reelTxt: '0,5 j', venduTxt: '2 j vendus' });
+  assert.equal(construireVue({ lots: L, temps: [] }, T, 3, null, { mission: 99 }).missionVue, 20, 'mission inconnue : retour à la courante');
+});
+
 test('construireVue : chrono arrêté, lot choisi par défaut = premier actif', () => {
   const v = construireVue({ lots: LOTS, temps: [] }, T, null);
   assert.equal(v.enCours, false);

@@ -74,11 +74,16 @@ p { margin: 0; }
 .ligne-titre { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 
 /* Chronomètre */
-.puces { display: flex; flex-wrap: wrap; gap: 8px; }
-.puce { text-align: left; min-height: 44px; padding: 8px 14px; border-radius: 12px; border: 2px solid var(--trait); background: var(--carte); display: flex; flex-direction: column; }
-.puce[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-doux); color: var(--accent-encre); }
-.puce-ctx { font-size: 11px; opacity: .8; }
-.puce-nom { font-size: 14px; font-weight: 600; }
+.groupes { display: flex; flex-direction: column; gap: 12px; }
+.groupe { display: flex; flex-direction: column; gap: 6px; }
+.groupe-titre { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--discret); }
+.puces { display: flex; flex-wrap: wrap; gap: 6px; }
+.puce { min-height: 34px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--trait); background: var(--carte);
+  font-size: 13px; font-weight: 500; line-height: 1.3; text-align: left; }
+.puce:hover { border-color: var(--accent); }
+.puce[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+select.choix-mission { width: auto; max-width: 100%; height: 34px; font-size: 13px; font-weight: 500; border-radius: 999px; padding: 0 12px; }
+.total-mission { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid var(--trait); }
 
 .chrono { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 14px 0 6px; }
 .courant { display: flex; align-items: center; gap: 10px; min-height: 20px; text-align: center; }
@@ -128,6 +133,7 @@ input[type="text"] { height: 44px; border: 1px solid var(--trait); border-radius
 .barre-base { height: 100%; background: var(--accent); transition: width .4s; }
 .barre-depasse { height: 100%; background: var(--depasse); transition: width .4s; }
 .lot-statut { font-size: 12px; color: var(--discret); }
+.lot[data-etat="ok"] .lot-statut { display: none; } /* le reste se lit sur la barre ; l'alerte seule s'affiche */
 .lot[data-etat="attention"] .lot-statut { color: var(--attention-encre); font-weight: 600; }
 .lot[data-etat="depasse"] .lot-statut { color: var(--depasse-encre); font-weight: 600; }
 
@@ -164,8 +170,7 @@ select, input[type="date"], input[type="time"] { height: 44px; border: 1px solid
   .grille { grid-template-columns: minmax(0, 1fr); }
   .carte { padding: 16px; border-radius: 18px; }
   .horloge { font-size: 56px; }
-  .puces { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
-  .puce { flex: none; }
+  .puce { min-height: 40px; }
   .bouton-principal { width: 100%; justify-content: center; min-height: 60px; }
   .jour { gap: 14px; }
   .anneau { width: 84px; height: 84px; }

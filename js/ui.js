@@ -24,11 +24,19 @@ function entete(serie) {
 }
 
 function puces(vue) {
-  return el('div', { class: 'puces' }, vue.lots.map((l) => el('button', {
-    type: 'button', class: 'puce', 'data-action': 'lot', 'data-lot': l.id, 'aria-pressed': l.choisi ? 'true' : 'false',
-  },
-  el('span', { class: 'puce-ctx', texte: l.contexte || ' ' }),
-  el('span', { class: 'puce-nom', texte: l.nom }))));
+  const puce = (l) => el('button', {
+    type: 'button', class: 'puce', 'data-action': 'lot', 'data-lot': l.id, 'aria-pressed': l.choisi ? 'true' : 'false', texte: l.nom,
+  });
+  return el('div', { class: 'groupes' }, vue.groupes.map((g) => el('div', { class: 'groupe' },
+    g.titre ? el('span', { class: 'groupe-titre', texte: g.titre }) : null,
+    el('div', { class: 'puces' }, g.lots.map(puce)))));
+}
+
+/** Choix de la mission affichée, ou son nom quand il n'y en a qu'une. */
+function choixMission(vue) {
+  if (vue.missions.length < 2) return el('span', { class: 'discret petit', texte: vue.missionTxt });
+  return el('select', { id: 'mission', class: 'choix-mission', 'aria-label': 'Mission' },
+    vue.missions.map((m) => el('option', { value: m.id, selected: m.choisie, texte: m.libelle })));
 }
 
 function segments(vue) {
@@ -51,7 +59,7 @@ function minuteur(vue) {
   return el('section', { class: 'carte minuteur', 'aria-label': 'Chronomètre' },
     el('div', { class: 'ligne-titre' },
       el('h2', { class: 'surtitre', texte: 'Sur quoi tu travailles' }),
-      el('span', { class: 'discret petit', texte: vue.enCours ? 'Change de prestation pour marquer un milestone' : 'Choisis une prestation puis démarre' })),
+      choixMission(vue)),
     vue.lots.length ? puces(vue) : el('p', { class: 'vide', texte: 'Aucune prestation : ajoute une ligne de devis avec sa mission et sa prestation (table DEVIS).' }),
     el('div', { class: 'chrono' },
       el('div', { class: 'courant' },
@@ -88,18 +96,30 @@ function carteJour(vue) {
 function carteLots(vue) {
   return el('section', { class: 'carte' },
     el('div', { class: 'ligne-titre' },
-      el('h2', { texte: 'Vendu vs réel, par prestation' }),
-      el('span', { class: 'discret petit', texte: '1 jour = 7 h' })),
-    vue.lots.map((l, i) => el('div', { class: 'lot', 'data-live-etat': `lots.${i}.etat`, 'data-etat': l.etat },
-      el('div', { class: 'lot-tete' },
-        el('span', {}, el('span', { class: 'fort', texte: l.nom }), el('span', { class: 'discret', texte: l.contexte ? ` · ${l.contexte}` : '' })),
-        el('span', { class: 'chiffres' },
-          el('strong', { 'data-live': `lots.${i}.reelTxt`, texte: l.reelTxt }),
-          el('span', { class: 'discret', texte: ` / ${l.venduTxt}` }))),
-      el('div', { class: 'barre', role: 'presentation' },
-        el('div', { class: 'barre-base', 'data-live-w': `lots.${i}.base` }),
-        el('div', { class: 'barre-depasse', 'data-live-w': `lots.${i}.depasse` })),
-      el('span', { class: 'lot-statut', 'data-live': `lots.${i}.statut`, texte: l.statut }))));
+      el('h2', { texte: 'Vendu vs réel' }),
+      el('span', { class: 'discret petit', texte: vue.missionTxt })),
+    el('div', { class: 'total-mission' },
+      el('span', { class: 'discret', texte: 'Mission' }),
+      el('span', { class: 'chiffres' },
+        el('strong', { 'data-live': 'totalMission.reelTxt', texte: vue.totalMission.reelTxt }),
+        el('span', { class: 'discret', texte: ` / ${vue.totalMission.venduTxt}` }))),
+    vue.groupes.flatMap((g) => [
+      g.titre ? el('span', { class: 'groupe-titre', texte: g.titre }) : null,
+      ...g.lots.map((l) => ligneLot(l, vue.lots.indexOf(l))),
+    ]));
+}
+
+function ligneLot(l, i) {
+  return el('div', { class: 'lot', 'data-live-etat': `lots.${i}.etat`, 'data-etat': l.etat },
+    el('div', { class: 'lot-tete' },
+      el('span', { class: 'fort', texte: l.nom }),
+      el('span', { class: 'chiffres' },
+        el('strong', { 'data-live': `lots.${i}.reelTxt`, texte: l.reelTxt }),
+        el('span', { class: 'discret', texte: ` / ${l.venduTxt}` }))),
+    el('div', { class: 'barre', role: 'presentation' },
+      el('div', { class: 'barre-base', 'data-live-w': `lots.${i}.base` }),
+      el('div', { class: 'barre-depasse', 'data-live-w': `lots.${i}.depasse` })),
+    el('span', { class: 'lot-statut', 'data-live': `lots.${i}.statut`, texte: l.statut }));
 }
 
 function carteEntrees(vue) {
@@ -129,7 +149,10 @@ function champSaisie(id, libelle, attrs) {
 /** Fenêtre de saisie ou de correction d'un temps. */
 function fenetreSaisie(vue, saisie) {
   const v = saisie.valeurs;
-  const options = vue.tousLots.map((l) => el('option', { value: l.id, selected: String(l.id) === String(v.lot), texte: l.libelle }));
+  // Une liste par mission : le nom de la prestation suffit dans chaque option.
+  const option = (l) => el('option', { value: l.id, selected: String(l.id) === String(v.lot), texte: l.court });
+  const missions = [...new Set(vue.tousLots.map((l) => l.mission))];
+  const options = missions.map((m) => el('optgroup', { label: m || 'Sans mission' }, vue.tousLots.filter((l) => l.mission === m).map(option)));
   return el('dialog', { class: 'fenetre', 'aria-labelledby': 'titre-saisie' },
     el('form', { 'data-action': 'enregistrer-temps', novalidate: true },
       el('h2', { id: 'titre-saisie', texte: v.id ? 'Corriger un temps' : 'Ajouter un temps' }),
@@ -159,7 +182,7 @@ export function principal(racine, vue, etat) {
     el('div', { class: 'grille' },
       minuteur(vue),
       el('div', { class: 'colonne' }, carteJour(vue), carteLots(vue), carteEntrees(vue))),
-    fenetre);
+    ...(fenetre ? [fenetre] : [])); // replaceChildren écrirait « null »
   rafraichirVivant(racine, vue);
   if (fenetre) {
     fenetre.showModal();
