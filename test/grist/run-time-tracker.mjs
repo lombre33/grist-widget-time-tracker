@@ -40,36 +40,36 @@ await lab.shotPanel('tt', '1-preparation', f());
 await f().getByRole('button', { name: 'Préparer Time_tracking' }).click();
 await f().locator('.puce').first().waitFor({ timeout: 20000 });
 const cols = await f().evaluate(async () => Object.keys(await grist.docApi.fetchTable('Time_tracking')));
-check('Time_tracking garde A, B, C et reçoit ses colonnes', ['A', 'B', 'C', 'Mission', 'Lot', 'Debut', 'Fin', 'Note', 'Session', 'Duree_min'].every((c) => cols.includes(c)), cols);
-check('un lot par valeur de Lots des devis', (await f().locator('.puce').count()) === 2, await f().locator('.puce').count());
-const cadrage = await f().locator('.lot', { hasText: 'Cadrage' }).innerText();
-check('le vendu vient des heures des prestations (14 h = 2 j)', /2 j vendus/.test(cadrage), cadrage);
+check('Time_tracking garde A, B, C et reçoit ses colonnes', ['A', 'B', 'C', 'Devis', 'Mission', 'Prestation', 'Debut', 'Fin', 'Note', 'Session', 'Duree_min'].every((c) => cols.includes(c)), cols);
+check('une prestation par ligne de devis', (await f().locator('.puce').count()) === 2, await f().locator('.puce').count());
+const cadrage = await f().locator('.lot', { hasText: 'Ateliers' }).innerText();
+check('le vendu vient des heures de la prestation (14 h = 2 j)', /2 j vendus/.test(cadrage), cadrage);
 
 // ----- Le chrono.
-await f().locator('.puce', { hasText: 'Cadrage' }).click();
+await f().locator('.puce', { hasText: 'Ateliers' }).click();
 await f().getByRole('button', { name: 'Démarrer' }).click();
 await page.waitForTimeout(1500);
 await f().locator('#note').fill('Atelier de cadrage');
 await f().locator('#note').press('Tab');
 await page.waitForTimeout(3000);
-await f().locator('.puce', { hasText: 'Maquettes' }).click();
+await f().locator('.puce', { hasText: 'Écrans' }).click();
 await page.waitForTimeout(6000);
 await lab.shotPanel('tt', '2-en-cours', f());
 const pendant = await f().evaluate(async () => grist.docApi.fetchTable('Time_tracking'));
-check('deux segments, mission et lot écrits, le premier fermé avec sa note', pendant.id.length === 2 && pendant.Mission.every((m) => m === 1)
-  && pendant.Lot.join() === 'Cadrage,Maquettes' && pendant.Fin[0] && !pendant.Fin[1] && pendant.Note[0] === 'Atelier de cadrage', pendant);
+check('deux segments, ligne de devis écrite, mission et prestation par formule, le premier fermé avec sa note', pendant.id.length === 2
+  && pendant.Devis.join() === '1,2' && pendant.Mission.every((m) => m === 1) && pendant.Prestation.join() === '1,2' && pendant.Fin[0] && !pendant.Fin[1] && pendant.Note[0] === 'Atelier de cadrage', pendant);
 check('la formule Duree_min de Grist calcule le premier segment', pendant.Duree_min[0] > 0, pendant.Duree_min);
 await f().evaluate(() => location.reload());
 await page.waitForTimeout(4000);
 check('après rechargement, le chrono tourne toujours', /Arrêter/.test(await f().locator('.bouton-principal').innerText()));
 await f().getByRole('button', { name: 'Arrêter et enregistrer' }).click();
 await page.waitForTimeout(2000);
-check('le lot de 0,0005 h est en dépassement', (await f().locator('.lot', { hasText: 'Maquettes' }).getAttribute('data-etat')) === 'depasse');
+check('la prestation de 0,0005 h est en dépassement', (await f().locator('.lot', { hasText: 'Écrans' }).getAttribute('data-etat')) === 'depasse');
 
 // ----- Saisie à la main d'un oubli, la veille, puis correction.
 await f().getByRole('button', { name: 'Jour précédent' }).click();
 await f().getByRole('button', { name: 'Ajouter un temps' }).click();
-await f().locator('#s-lot').selectOption({ label: 'Cadrage · Atelier Mira · M-2026-01' }).catch(async () => f().locator('#s-lot').selectOption({ index: 1 }));
+await f().locator('#s-lot').selectOption({ label: 'Ateliers · Atelier Mira · M-2026-01 · Cadrage' }).catch(async () => f().locator('#s-lot').selectOption({ index: 1 }));
 await f().locator('#s-debut').fill('09:00');
 await f().locator('#s-fin').fill('10:30');
 await f().locator('#s-note').fill('Oubli du chrono');

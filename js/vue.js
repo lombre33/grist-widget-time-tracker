@@ -26,7 +26,7 @@ export function minutesDepuis(r, depuis, maintenant) {
 }
 
 export function libelleLot(lot) {
-  if (!lot) return 'Lot supprimé';
+  if (!lot) return 'Prestation supprimée';
   const contexte = [lot.Client_nom, lot.Projet_nom].filter(Boolean).join(' · ');
   return contexte ? `${lot.Nom || 'Sans nom'} · ${contexte}` : lot.Nom || 'Sans nom';
 }
@@ -125,7 +125,7 @@ export function construireVue(donnees, maintenant, choix, jourVu = null, minParJ
     enCours: Boolean(ouvert),
     ouvert,
     lotCourant,
-    libelleCourant: lotCourant ? libelleLot(parId.get(lotCourant)) : 'Aucun lot',
+    libelleCourant: lotCourant ? libelleLot(parId.get(lotCourant)) : 'Aucune prestation',
     horloge: ouvert ? hms(maintenant - depart) : hms(0),
     lots: actifs.map((l) => ({
       id: l.id,

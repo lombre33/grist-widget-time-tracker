@@ -167,7 +167,7 @@ function changerJour(sens) {
 }
 
 const GESTES = {
-  lot: (c) => surLot(c.dataset.lot),
+  lot: (c) => surLot(Number(c.dataset.lot)),
   basculer: () => basculer(),
   installer: () => installer(),
   'jour-prec': () => changerJour(-1),

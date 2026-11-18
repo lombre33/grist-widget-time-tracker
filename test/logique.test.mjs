@@ -5,7 +5,7 @@ import { hms, hm, jours, nbJours, ecart } from '../js/format.js';
 import { SOURCES, COLONNES_TEMPS, planifier, planVide, actionsDuPlan } from '../js/schema.js';
 import { segmentOuvert, demarrer, changer, arreter, noter } from '../js/session.js';
 import { enLignes, minuit, minutesDepuis, libelleLot, construireVue } from '../js/vue.js';
-import { cleLot, champsDuLot, valeursLot, tempsDuChrono, construireModele, SANS_LOT } from '../js/modele.js';
+import { champsDuLot, texteChoix, tempsDuChrono, construireModele } from '../js/modele.js';
 import { versChamps, depuisChamps, valeursInitiales, actionsSaisie, actionSupprimer } from '../js/saisie.js';
 
 // ---------- format
@@ -64,7 +64,8 @@ test('planifier : Time_tracking avec A, B, C seulement -> colonnes ajoutées, A 
   const actions = actionsDuPlan(plan);
   assert.ok(actions.every((a) => a[0] === 'AddColumn' && a[1] === 'Time_tracking'));
   assert.deepEqual(actions.find((a) => a[2] === 'Duree_min')[3].isFormula, true);
-  assert.deepEqual(actions.find((a) => a[2] === 'Mission')[3], { type: 'Ref:MISSIONS', isFormula: false });
+  assert.deepEqual(actions.find((a) => a[2] === 'Devis')[3], { type: 'Ref:DEVIS', isFormula: false });
+  assert.deepEqual(actions.find((a) => a[2] === 'Mission')[3], { type: 'Ref:MISSIONS', isFormula: true, formula: '$Devis.Mission' });
 });
 
 test('planifier : Time_tracking absente -> AddTable', () => {
@@ -84,60 +85,51 @@ test('planifier : sources manquantes listées, rien créé chez elles', () => {
   assert.deepEqual(plan.manquantes, ['table DEVIS', 'colonne Table1.heures']);
 });
 
-// ---------- modèle (gestion client -> lots)
+// ---------- modèle (gestion client -> prestations)
 
-test('clé de lot et champs', () => {
-  assert.equal(cleLot(3, 'Maquettes'), '3|Maquettes');
-  assert.equal(cleLot(3, null), '3|');
-  assert.deepEqual(champsDuLot('3|Lot | avec barre'), { Mission: 3, Lot: 'Lot | avec barre' });
-  assert.deepEqual(champsDuLot('7|'), { Mission: 7, Lot: '' });
+test('champs d’une prestation et texte d’un choix', () => {
+  assert.deepEqual(champsDuLot('3'), { Devis: 3 });
+  assert.equal(texteChoix('A'), 'A');
+  assert.equal(texteChoix(['L', 'A', 'B']), 'A, B');
+  assert.equal(texteChoix(null), '');
 });
 
-test('valeursLot : choix simple, multiple ou vide', () => {
-  assert.deepEqual(valeursLot('A'), ['A']);
-  assert.deepEqual(valeursLot(['L', 'A', 'B']), ['A', 'B']);
-  assert.deepEqual(valeursLot(null), ['']);
-  assert.deepEqual(valeursLot(''), ['']);
-});
-
-test('tempsDuChrono : lignes sans mission ignorées (A, B, C)', () => {
-  const t = tempsDuChrono([{ id: 1, Mission: 2, Lot: 'X', Debut: 1 }, { id: 2, Mission: 0, A: null }]);
-  assert.deepEqual(t.map((r) => [r.id, r.Lot]), [[1, '2|X']]);
+test('tempsDuChrono : lignes sans devis ignorées (A, B, C)', () => {
+  const t = tempsDuChrono([{ id: 1, Devis: 2, Debut: 1 }, { id: 2, Devis: 0, A: null }]);
+  assert.deepEqual(t.map((r) => [r.id, r.Lot]), [[1, 2]]);
 });
 
 const SRC = {
   clients: [{ id: 1, Nom: 'Atelier Mira' }],
   missions: [{ id: 10, numero: 'M-001', date: 100, Client: 1 }, { id: 11, numero: 'M-002', date: 200, Client: 0 }],
-  prestations: [{ id: 5, heures: 14 }, { id: 6, heures: 7 }],
+  prestations: [{ id: 5, Missions: 'Ateliers', heures: 14 }, { id: 6, Missions: 'Écrans', heures: 7 }],
   devis: [
-    { id: 1, Mission: 10, prestations: 5, Lots: 'Maquettes' },
-    { id: 2, Mission: 10, prestations: 6, Lots: 'Maquettes' },
-    { id: 3, Mission: 10, prestations: 6, Lots: 'Cadrage' },
-    { id: 4, Mission: 11, prestations: 6, Lots: '' },
-    { id: 5, Mission: 0, prestations: 6, Lots: 'X' },
+    { id: 1, Mission: 10, prestations: 5, Lots: 'Cadrage' },
+    { id: 2, Mission: 10, prestations: 6, Lots: '' },
+    { id: 3, Mission: 11, prestations: 6, Lots: ['L', 'A', 'B'] },
+    { id: 4, Mission: 0, prestations: 6, Lots: 'X' },
   ],
-  temps: [{ id: 1, Mission: 10, Lot: 'Maquettes', Debut: 1000, Fin: 4600, Duree_min: 60 }, { id: 2, Mission: 10, Lot: 'Hors devis', Debut: 5000, Fin: null, Duree_min: 0 }],
+  temps: [{ id: 1, Devis: 1, Debut: 1000, Fin: 4600, Duree_min: 60 }, { id: 2, Devis: 1, Debut: 5000, Fin: 5600, Duree_min: 10 }, { id: 3, Devis: 0 }],
 };
 
-test('construireModele : un lot par mission et valeur de Lots, vendu = heures des prestations', () => {
+test('construireModele : une prestation par ligne de devis, vendu = heures de la prestation', () => {
   const { lots, temps } = construireModele(SRC);
   const parId = Object.fromEntries(lots.map((l) => [l.id, l]));
-  assert.equal(parId['10|Maquettes'].Jours_vendus, 3); // 14 h + 7 h
-  assert.equal(parId['10|Maquettes'].Reel_min, 60);
-  assert.equal(parId['10|Maquettes'].Client_nom, 'Atelier Mira');
-  assert.equal(parId['10|Maquettes'].Projet_nom, 'M-001');
-  assert.equal(parId['10|Cadrage'].Jours_vendus, 1);
-  assert.equal(parId['11|'].Nom, SANS_LOT);
-  assert.equal(parId['11|'].Client_nom, '');
-  assert.equal(parId['10|Hors devis'].Jours_vendus, 0, 'un lot qui n’existe que par son temps est montré');
-  assert.equal(lots[0].id, '11|', 'mission la plus récente d’abord');
-  assert.equal(lots.length, 4);
-  assert.equal(temps[1].Lot, '10|Hors devis');
+  assert.deepEqual(lots.map((l) => l.id), [3, 1, 2], 'mission la plus récente d’abord, puis l’ordre du devis');
+  assert.equal(parId[1].Nom, 'Ateliers');
+  assert.equal(parId[1].Jours_vendus, 2);
+  assert.equal(parId[1].Reel_min, 70);
+  assert.equal(parId[1].Client_nom, 'Atelier Mira');
+  assert.equal(parId[1].Projet_nom, 'M-001 · Cadrage');
+  assert.equal(parId[2].Projet_nom, 'M-001');
+  assert.equal(parId[3].Projet_nom, 'M-002 · A, B');
+  assert.equal(parId[3].Client_nom, '');
+  assert.equal(temps.length, 2);
 });
 
-test('construireModele : choix multiple compte les heures dans chaque lot', () => {
-  const { lots } = construireModele({ ...SRC, devis: [{ id: 1, Mission: 10, prestations: 6, Lots: ['L', 'A', 'B'] }], temps: [] });
-  assert.deepEqual(lots.map((l) => [l.Nom, l.Jours_vendus]), [['A', 1], ['B', 1]]);
+test('construireModele : prestation absente de Table1', () => {
+  const { lots } = construireModele({ ...SRC, devis: [{ id: 9, Mission: 10, prestations: 0 }], temps: [] });
+  assert.deepEqual(lots.map((l) => [l.Nom, l.Jours_vendus]), [['Prestation 9', 0]]);
 });
 
 // ---------- session
@@ -156,25 +148,25 @@ test('segmentOuvert : le plus récent sans fin', () => {
 });
 
 test('demarrer', () => {
-  assert.deepEqual(demarrer('7|Cadrage', T + 0.5), [['AddRecord', 'Time_tracking', null, { Mission: 7, Lot: 'Cadrage', Debut: T + 0.5, Session: T }]]);
+  assert.deepEqual(demarrer(7, T + 0.5), [['AddRecord', 'Time_tracking', null, { Devis: 7, Debut: T + 0.5, Session: T }]]);
   assert.throws(() => demarrer(null, T));
 });
 
 test('changer : ferme le segment et en ouvre un dans la même session', () => {
-  const ouvert = { id: 9, Lot: '1|A', Debut: T, Session: T };
-  assert.deepEqual(changer(ouvert, '1|B', T + 600), [
+  const ouvert = { id: 9, Lot: 1, Debut: T, Session: T };
+  assert.deepEqual(changer(ouvert, 2, T + 600), [
     ['UpdateRecord', 'Time_tracking', 9, { Fin: T + 600 }],
-    ['AddRecord', 'Time_tracking', null, { Mission: 1, Lot: 'B', Debut: T + 600, Session: T }],
+    ['AddRecord', 'Time_tracking', null, { Devis: 2, Debut: T + 600, Session: T }],
   ]);
 });
 
 test('changer : même lot ou rien d’ouvert -> rien', () => {
-  assert.deepEqual(changer({ id: 9, Lot: '1|A', Debut: T, Session: T }, '1|A', T + 5), []);
+  assert.deepEqual(changer({ id: 9, Lot: 1, Debut: T, Session: T }, 1, T + 5), []);
   assert.deepEqual(changer(null, 1, T), []);
 });
 
 test('changer : session absente reprise du début', () => {
-  const a = changer({ id: 9, Lot: '1|A', Debut: T + 0.7, Session: null }, '2|', T + 10);
+  const a = changer({ id: 9, Lot: 1, Debut: T + 0.7, Session: null }, 2, T + 10);
   assert.equal(a[1][3].Session, T);
 });
 
@@ -209,7 +201,7 @@ test('minuit et minutesDepuis', () => {
 test('libelleLot', () => {
   assert.equal(libelleLot({ Nom: 'Maquettes', Client_nom: 'Mira', Projet_nom: 'Site' }), 'Maquettes · Mira · Site');
   assert.equal(libelleLot({ Nom: 'Seul' }), 'Seul');
-  assert.equal(libelleLot(undefined), 'Lot supprimé');
+  assert.equal(libelleLot(undefined), 'Prestation supprimée');
 });
 
 const LOTS = [
@@ -275,7 +267,7 @@ test('construireVue : lot sans jours vendus', () => {
 test('construireVue : aucun lot', () => {
   const v = construireVue({ lots: [], temps: [] }, T, null);
   assert.equal(v.lotCourant, null);
-  assert.equal(v.libelleCourant, 'Aucun lot');
+  assert.equal(v.libelleCourant, 'Aucune prestation');
 });
 
 test('construireVue : journée complète', () => {
@@ -299,30 +291,30 @@ test('versChamps et depuisChamps : aller-retour en heure locale', () => {
 const S = (h, m = 0) => new Date(2026, 10, 18, h, m).getTime() / 1000;
 
 test('valeursInitiales : ligne existante ou nouveau temps', () => {
-  assert.deepEqual(valeursInitiales({ id: 4, Lot: '1|A', Debut: S(9), Fin: S(10, 30), Note: 'n' }, 0, null),
-    { id: 4, lot: '1|A', date: '2026-11-18', debut: '09:00', fin: '10:30', note: 'n' });
-  assert.deepEqual(valeursInitiales(null, S(0), '1|B'), { id: null, lot: '1|B', date: '2026-11-18', debut: '', fin: '', note: '' });
+  assert.deepEqual(valeursInitiales({ id: 4, Lot: 1, Debut: S(9), Fin: S(10, 30), Note: 'n' }, 0, null),
+    { id: 4, lot: 1, date: '2026-11-18', debut: '09:00', fin: '10:30', note: 'n' });
+  assert.deepEqual(valeursInitiales(null, S(0), 2), { id: null, lot: 2, date: '2026-11-18', debut: '', fin: '', note: '' });
 });
 
 test('actionsSaisie : nouveau temps', () => {
-  const r = actionsSaisie({ lot: '1|A', date: '2026-11-18', debut: '09:00', fin: '10:30', note: ' oubli ' }, { temps: [] });
-  assert.deepEqual(r.actions, [['AddRecord', 'Time_tracking', null, { Mission: 1, Lot: 'A', Debut: S(9), Fin: S(10, 30), Note: 'oubli', Session: S(9) }]]);
+  const r = actionsSaisie({ lot: '1', date: '2026-11-18', debut: '09:00', fin: '10:30', note: ' oubli ' }, { temps: [] });
+  assert.deepEqual(r.actions, [['AddRecord', 'Time_tracking', null, { Devis: 1, Debut: S(9), Fin: S(10, 30), Note: 'oubli', Session: S(9) }]]);
 });
 
 test('actionsSaisie : correction d’une ligne, fin après minuit', () => {
-  const ligne = { id: 4, Lot: '1|A', Debut: S(9), Fin: null };
-  const r = actionsSaisie({ lot: '2|B', date: '2026-11-18', debut: '23:00', fin: '01:00', note: '' }, { temps: [ligne], ligne });
-  assert.deepEqual(r.actions, [['UpdateRecord', 'Time_tracking', 4, { Mission: 2, Lot: 'B', Debut: S(23), Fin: S(25), Note: '' }]]);
+  const ligne = { id: 4, Lot: 1, Debut: S(9), Fin: null };
+  const r = actionsSaisie({ lot: '2', date: '2026-11-18', debut: '23:00', fin: '01:00', note: '' }, { temps: [ligne], ligne });
+  assert.deepEqual(r.actions, [['UpdateRecord', 'Time_tracking', 4, { Devis: 2, Debut: S(23), Fin: S(25), Note: '' }]]);
 });
 
 test('actionsSaisie : refus lisibles', () => {
-  assert.match(actionsSaisie({ lot: '', date: '2026-11-18', debut: '09:00' }, { temps: [] }).erreur, /lot/);
-  assert.match(actionsSaisie({ lot: '1|A', date: '', debut: '09:00' }, { temps: [] }).erreur, /début/);
-  assert.match(actionsSaisie({ lot: '1|A', date: '2026-11-18', debut: '09:00', fin: '9h' }, { temps: [] }).erreur, /fin/);
+  assert.match(actionsSaisie({ lot: '', date: '2026-11-18', debut: '09:00' }, { temps: [] }).erreur, /prestation/);
+  assert.match(actionsSaisie({ lot: '1', date: '', debut: '09:00' }, { temps: [] }).erreur, /début/);
+  assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', debut: '09:00', fin: '9h' }, { temps: [] }).erreur, /fin/);
   const ouvert = { id: 8, Debut: S(8), Fin: null };
-  assert.match(actionsSaisie({ lot: '1|A', date: '2026-11-18', debut: '09:00', fin: '' }, { temps: [ouvert] }).erreur, /chrono tourne/);
+  assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', debut: '09:00', fin: '' }, { temps: [ouvert] }).erreur, /chrono tourne/);
   // corriger le segment ouvert lui-même sans fin reste permis
-  assert.ok(actionsSaisie({ lot: '1|A', date: '2026-11-18', debut: '07:30', fin: '' }, { temps: [ouvert], ligne: ouvert }).actions);
+  assert.ok(actionsSaisie({ lot: '1', date: '2026-11-18', debut: '07:30', fin: '' }, { temps: [ouvert], ligne: ouvert }).actions);
 });
 
 test('actionSupprimer', () => {

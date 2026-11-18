@@ -17,7 +17,10 @@
   const ecouteurs = [];
 
   function formules() {
-    for (const r of tables.Time_tracking || []) r.Duree_min = r.Fin && r.Debut ? (r.Fin - r.Debut) / 60 : 0;
+    for (const r of tables.Time_tracking || []) {
+      const d = (tables.DEVIS || []).find((x) => x.id === r.Devis);
+      Object.assign(r, { Duree_min: r.Fin && r.Debut ? (r.Fin - r.Debut) / 60 : 0, Mission: d?.Mission || 0, Prestation: d?.prestations || 0 });
+    }
   }
   function enColonnes(lignes, cols) {
     const out = { id: lignes.map((r) => r.id) };

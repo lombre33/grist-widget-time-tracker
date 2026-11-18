@@ -34,8 +34,8 @@ function puces(vue) {
 function segments(vue) {
   if (!vue.segments.length) {
     return el('p', { class: 'vide' }, vue.enCours
-      ? 'Change de lot pour marquer un temps intermédiaire.'
-      : 'Démarre le chrono. Chaque changement de lot crée un temps intermédiaire.');
+      ? 'Change de prestation pour marquer un temps intermédiaire.'
+      : 'Démarre le chrono. Chaque changement de prestation crée un temps intermédiaire.');
   }
   return el('ol', { class: 'segments', reversed: true }, vue.segments.map((s, i) => el('li', { class: s.ouvert ? 'ouvert' : '' },
     el('span', { class: 'num', texte: s.num }),
@@ -51,8 +51,8 @@ function minuteur(vue) {
   return el('section', { class: 'carte minuteur', 'aria-label': 'Chronomètre' },
     el('div', { class: 'ligne-titre' },
       el('h2', { class: 'surtitre', texte: 'Sur quoi tu travailles' }),
-      el('span', { class: 'discret petit', texte: vue.enCours ? 'Change de lot pour marquer un milestone' : 'Choisis un lot puis démarre' })),
-    vue.lots.length ? puces(vue) : el('p', { class: 'vide', texte: 'Aucun lot : ajoute une ligne de devis avec sa mission et son lot (table DEVIS).' }),
+      el('span', { class: 'discret petit', texte: vue.enCours ? 'Change de prestation pour marquer un milestone' : 'Choisis une prestation puis démarre' })),
+    vue.lots.length ? puces(vue) : el('p', { class: 'vide', texte: 'Aucune prestation : ajoute une ligne de devis avec sa mission et sa prestation (table DEVIS).' }),
     el('div', { class: 'chrono' },
       el('div', { class: 'courant' },
         vue.enCours ? el('span', { class: 'point-vivant', 'aria-hidden': 'true' }) : null,
@@ -88,7 +88,7 @@ function carteJour(vue) {
 function carteLots(vue) {
   return el('section', { class: 'carte' },
     el('div', { class: 'ligne-titre' },
-      el('h2', { texte: 'Vendu vs réel, par lot' }),
+      el('h2', { texte: 'Vendu vs réel, par prestation' }),
       el('span', { class: 'discret petit', texte: '1 jour = 7 h' })),
     vue.lots.map((l, i) => el('div', { class: 'lot', 'data-live-etat': `lots.${i}.etat`, 'data-etat': l.etat },
       el('div', { class: 'lot-tete' },
@@ -129,13 +129,13 @@ function champSaisie(id, libelle, attrs) {
 /** Fenêtre de saisie ou de correction d'un temps. */
 function fenetreSaisie(vue, saisie) {
   const v = saisie.valeurs;
-  const options = vue.tousLots.map((l) => el('option', { value: l.id, selected: l.id === v.lot, texte: l.libelle }));
+  const options = vue.tousLots.map((l) => el('option', { value: l.id, selected: String(l.id) === String(v.lot), texte: l.libelle }));
   return el('dialog', { class: 'fenetre', 'aria-labelledby': 'titre-saisie' },
     el('form', { 'data-action': 'enregistrer-temps', novalidate: true },
       el('h2', { id: 'titre-saisie', texte: v.id ? 'Corriger un temps' : 'Ajouter un temps' }),
       el('div', { class: 'champ' },
-        el('label', { for: 's-lot', texte: 'Lot' }),
-        el('select', { id: 's-lot', name: 's-lot' }, el('option', { value: '', texte: '— Choisir un lot —' }), options)),
+        el('label', { for: 's-lot', texte: 'Prestation' }),
+        el('select', { id: 's-lot', name: 's-lot' }, el('option', { value: '', texte: '— Choisir une prestation —' }), options)),
       el('div', { class: 'grille-champs' },
         champSaisie('s-date', 'Date', { type: 'date', value: v.date }),
         champSaisie('s-debut', 'Début', { type: 'time', value: v.debut }),

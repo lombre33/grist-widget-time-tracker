@@ -10,13 +10,15 @@ export const SOURCES = {
   CLIENTS: ['Nom'],
   MISSIONS: ['numero', 'Client'],
   DEVIS: ['Mission', 'prestations', 'Lots'],
-  Table1: ['heures'],
+  Table1: ['Missions', 'heures'],
 };
 
 /** Colonnes de Time_tracking (ajoutées si elles manquent ; A, B, C et toute autre colonne restent telles quelles). */
 export const COLONNES_TEMPS = [
-  { id: 'Mission', type: 'Ref:MISSIONS' },
-  { id: 'Lot', type: 'Text' },
+  { id: 'Devis', type: 'Ref:DEVIS' },
+  // Rappels en formule, pour les résumés de Grist par mission ou par prestation.
+  { id: 'Mission', type: 'Ref:MISSIONS', formula: '$Devis.Mission' },
+  { id: 'Prestation', type: 'Ref:Table1', formula: '$Devis.prestations' },
   { id: 'Debut', type: `DateTime:${TZ}` },
   { id: 'Fin', type: `DateTime:${TZ}` },
   { id: 'Note', type: 'Text' },

@@ -37,7 +37,7 @@ export function valeursInitiales(ligne, jour, lotParDefaut) {
  * Une fin avant le début passe minuit (fin le lendemain).
  */
 export function actionsSaisie(v, { temps, ligne = null }) {
-  if (!v.lot) return { erreur: 'Choisis un lot.' };
+  if (!v.lot) return { erreur: 'Choisis une prestation.' };
   const debut = depuisChamps(v.date, v.debut);
   if (debut == null) return { erreur: 'Indique la date et l’heure de début.' };
   let fin = null;

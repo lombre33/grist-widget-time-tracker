@@ -24,7 +24,7 @@ export async function lireStructure() {
   return existant;
 }
 
-/** Lit les tables de gestion client et rend les lots et le temps du chrono. */
+/** Lit les tables de gestion client et rend les prestations suivies et le temps du chrono. */
 export async function lireDonnees() {
   const [clients, missions, devis, prestations, temps] = await Promise.all(
     ['CLIENTS', 'MISSIONS', 'DEVIS', 'Table1', TABLE_TEMPS].map((t) => api().docApi.fetchTable(t).then(enLignes)),
