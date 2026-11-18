@@ -43,5 +43,9 @@ npm run test:navigateur     # parcours complet dans Chromium avec un faux Grist 
 - `js/format.js`, `js/schema.js`, `js/session.js`, `js/vue.js`, `js/nouveau-lot.js` : logique pure, testée.
 - `js/grist.js` : seul module qui parle à Grist. `js/ui.js`, `js/dom.js` : affichage. `js/main.js` : gestes.
 - Le faux Grist des essais calcule les formules à la main : il ne remplace pas un essai dans un vrai Grist.
+  `test/grist/run-time-tracker.mjs` joue le parcours dans un vrai Grist (grist-static, labo de `grist-widget-GFS`) :
+  création des tables, lots, chrono, changement de lot, rechargement en cours de chrono, formules de Grist.
+- La politique de sécurité refuse les styles en ligne : le thème que Grist pousse dans le widget est ignoré
+  (deux avertissements en console au chargement, sans effet), le widget a ses propres couleurs.
 
 Licence : GPL 3.0.
