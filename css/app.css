@@ -129,6 +129,12 @@ input[type="text"] { height: 44px; border: 1px solid var(--trait); border-radius
 .lot { display: flex; flex-direction: column; gap: 6px; }
 .lot-tete { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; }
 .lot-tete .chiffres { white-space: nowrap; }
+.barre-zone { position: relative; padding: 4px 0; margin: -4px 0; cursor: default; }
+.barre-zone:hover::after, .barre-zone:focus-visible::after {
+  content: attr(data-info); position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); z-index: 2;
+  white-space: nowrap; padding: 5px 10px; border-radius: 8px; background: var(--encre); color: var(--carte); font-size: 12px; font-weight: 600;
+  pointer-events: none;
+}
 .barre { height: 10px; border-radius: 999px; background: var(--fond); overflow: hidden; display: flex; }
 .barre-base { height: 100%; background: var(--accent); transition: width .4s; }
 .barre-depasse { height: 100%; background: var(--depasse); transition: width .4s; }
@@ -157,7 +163,7 @@ input[type="text"] { height: 44px; border: 1px solid var(--trait); border-radius
 .fenetre { border: none; border-radius: var(--rayon); padding: 22px; width: min(520px, calc(100% - 24px)); background: var(--carte); color: var(--encre); }
 .fenetre::backdrop { background: rgba(15, 17, 21, .45); }
 .fenetre form { display: flex; flex-direction: column; gap: 12px; }
-.fenetre .grille-champs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fenetre .grille-champs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .champ { display: flex; flex-direction: column; gap: 4px; }
 .champ label { font-size: 12px; font-weight: 600; color: var(--discret); }
 select, input[type="date"], input[type="time"] { height: 44px; border: 1px solid var(--trait); border-radius: 10px; padding: 0 10px; background: var(--carte); width: 100%; }
@@ -175,6 +181,4 @@ select, input[type="date"], input[type="time"] { height: 44px; border: 1px solid
   .jour { gap: 14px; }
   .anneau { width: 84px; height: 84px; }
   .jour-total { font-size: 26px; }
-  .fenetre .grille-champs { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .fenetre .grille-champs .champ:first-child { grid-column: 1 / -1; }
 }

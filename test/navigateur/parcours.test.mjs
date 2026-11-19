@@ -90,8 +90,8 @@ async function parcours(nav, s) {
   await page.getByRole('button', { name: 'Jour précédent' }).click();
   await page.getByRole('button', { name: 'Ajouter un temps' }).click();
   await page.getByLabel('Prestation', { exact: true }).selectOption({ label: 'Ateliers · Cadrage' });
-  await page.getByLabel('Début').fill('09:00');
-  await page.getByLabel('Fin', { exact: true }).fill('10:30');
+  await page.locator('#s-debut').fill('09:00');
+  await page.locator('#s-fin').fill('10:30');
   await page.locator('#s-note').fill('Oubli du chrono');
   await page.screenshot({ path: path.join(racine, 'test/navigateur/saisie.png') });
   await page.getByRole('button', { name: 'Enregistrer' }).click();
@@ -103,7 +103,7 @@ async function parcours(nav, s) {
   assert.match(await page.locator('.entrees').innerText(), /1 h 30/);
 
   await page.getByRole('button', { name: /^Modifier Ateliers/ }).click();
-  await page.getByLabel('Fin', { exact: true }).fill('11:00');
+  await page.locator('#s-fin').fill('11:00');
   await page.getByRole('button', { name: 'Enregistrer' }).click();
   await page.waitForTimeout(300);
   lignes = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
@@ -115,6 +115,20 @@ async function parcours(nav, s) {
   await page.waitForTimeout(300);
   lignes = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
   assert.ok(!lignes.some((r) => r.id === oubli.id), 'ligne supprimée après confirmation');
+
+  // Saisie par la seule durée, en heures décimales.
+  await page.getByRole('button', { name: 'Ajouter un temps' }).click();
+  await page.getByLabel('Durée (h)').fill('0,25');
+  await page.locator('#s-note').fill('Appel rapide');
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await page.waitForTimeout(300);
+  lignes = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
+  const appel = lignes.find((r) => r.Note === 'Appel rapide');
+  assert.ok(appel && appel.Fin - appel.Debut === 900, '0,25 h = 15 min');
+
+  // Survol d'une barre : le temps en heures.
+  await page.locator('.barre-zone').first().hover();
+  assert.match(await page.locator('.barre-zone').first().getAttribute('data-info'), /^Réel .* sur 14 h 00 vendues/);
 
   // Refus lisible : fin vide alors qu'aucun chrono ne tourne est permis, mais pas sans prestation.
   await page.getByRole('button', { name: 'Ajouter un temps' }).click();

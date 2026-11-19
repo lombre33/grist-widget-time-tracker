@@ -4,7 +4,7 @@ import * as G from './grist.js';
 import { planifier, planVide, actionsDuPlan } from './schema.js';
 import { segmentOuvert, demarrer, changer, arreter, noter } from './session.js';
 import { construireVue, serie, minuit } from './vue.js';
-import { valeursInitiales, actionsSaisie, actionSupprimer } from './saisie.js';
+import { valeursInitiales, actionsSaisie, actionSupprimer, accorder } from './saisie.js';
 import { principal, installation, message, vivant } from './ui.js';
 
 const racine = document.getElementById('app');
@@ -133,7 +133,8 @@ function fermerSaisie() {
 
 function lireSaisie(form) {
   const val = (n) => form.querySelector(`[name="${n}"]`).value;
-  return { id: etat.saisie.valeurs.id, lot: val('s-lot'), date: val('s-date'), debut: val('s-debut'), fin: val('s-fin'), note: val('s-note') };
+  return { id: etat.saisie.valeurs.id, lot: val('s-lot'), date: val('s-date'), debut: val('s-debut'), fin: val('s-fin'), duree: val('s-duree'),
+    note: val('s-note') };
 }
 
 async function enregistrerSaisie(form) {
@@ -196,6 +197,17 @@ racine.addEventListener('click', (ev) => {
   const cible = ev.target.closest('[data-action]');
   if (!cible || cible.tagName === 'FORM') return;
   GESTES[cible.dataset.action]?.(cible);
+});
+
+// Saisie : la durée et la fin se suivent (taper une durée recalcule la fin, et l'inverse).
+racine.addEventListener('input', (ev) => {
+  const source = { 's-duree': 'duree', 's-debut': 'debut', 's-fin': 'fin' }[ev.target.id];
+  if (!source) return;
+  const form = ev.target.form;
+  const champ = (n) => form.querySelector(`#s-${n}`);
+  const maj = accorder({ date: champ('date').value, debut: champ('debut').value, fin: champ('fin').value, duree: champ('duree').value }, source);
+  if ('fin' in maj) champ('fin').value = maj.fin;
+  if ('duree' in maj) champ('duree').value = maj.duree;
 });
 
 racine.addEventListener('change', (ev) => {

@@ -49,6 +49,10 @@ export function rafraichirVivant(racine, vue) {
     const v = valeurChemin(vue, n.dataset.liveEtat);
     if (v !== undefined) n.dataset.etat = v;
   });
+  racine.querySelectorAll('[data-live-info]').forEach((n) => {
+    const v = valeurChemin(vue, n.dataset.liveInfo);
+    if (v !== undefined && n.dataset.info !== v) n.dataset.info = v;
+  });
   racine.querySelectorAll('[data-live-anneau]').forEach((n) => {
     const pct = Number(valeurChemin(vue, n.dataset.liveAnneau)) || 0;
     const c = 2 * Math.PI * Number(n.getAttribute('r'));

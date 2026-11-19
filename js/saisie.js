@@ -22,13 +22,57 @@ export function depuisChamps(date, heure) {
   return Number.isNaN(d.getTime()) ? null : d.getTime() / 1000;
 }
 
+/**
+ * Une durée tapée -> minutes, ou null. Heures décimales (« 0.25 », « 0,25 » = 15 min), « 1h30 », « 1:30 », « 45 min ».
+ */
+export function lireDuree(texte) {
+  const t = String(texte || '').trim().toLowerCase().replace(/\s+/g, '');
+  let m = /^(\d+(?:[.,]\d+)?)h?$/.exec(t);
+  let min = null;
+  if (m) min = Number(m[1].replace(',', '.')) * 60;
+  else if ((m = /^(\d+)[h:](\d{1,2})(?:m|min|mn)?$/.exec(t))) min = Number(m[1]) * 60 + Number(m[2]);
+  else if ((m = /^(\d+)(?:m|min|mn)$/.exec(t))) min = Number(m[1]);
+  return min > 0 && min <= 24 * 60 ? Math.round(min * 100) / 100 : null;
+}
+
+/** Minutes -> heures décimales lisibles (« 1,5 », « 0,25 »). */
+export function ecrireDuree(min) {
+  return min > 0 ? String(Math.round((min / 60) * 100) / 100).replace('.', ',') : '';
+}
+
+/** Début d'un temps saisi par sa seule durée : après le dernier temps fini du jour, sinon 9 h. */
+export function debutAuto(temps, jour, sauf = null) {
+  const fins = temps.filter((r) => r.id !== sauf && r.Fin && r.Debut >= jour && r.Debut < jour + 86400).map((r) => r.Fin);
+  return fins.length ? Math.max(...fins) : jour + 9 * 3600;
+}
+
+/**
+ * Garde début, fin et durée d'accord pendant la saisie. `source` : le champ qui vient de changer.
+ * Rend les champs à réécrire.
+ */
+export function accorder({ date, debut, fin, duree }, source) {
+  const d = depuisChamps(date || '2000-01-01', debut);
+  if (source === 'duree' || (source === 'debut' && !fin && duree)) {
+    const min = lireDuree(duree);
+    if (d == null || min == null) return { fin: '' };
+    return { fin: versChamps(d + min * 60).heure };
+  }
+  let f = depuisChamps(date || '2000-01-01', fin);
+  if (d == null || f == null) return {};
+  if (f <= d) f += 86400;
+  return { duree: ecrireDuree((f - d) / 60) };
+}
+
 /** Valeurs du formulaire pour une ligne existante (ou un nouveau temps le jour `jour`). */
 export function valeursInitiales(ligne, jour, lotParDefaut) {
   if (ligne) {
     const debut = versChamps(ligne.Debut);
-    return { id: ligne.id, lot: ligne.Lot, date: debut.date, debut: debut.heure, fin: versChamps(ligne.Fin).heure, note: ligne.Note || '' };
+    return {
+      id: ligne.id, lot: ligne.Lot, date: debut.date, debut: debut.heure, fin: versChamps(ligne.Fin).heure,
+      duree: ligne.Fin ? ecrireDuree((ligne.Fin - ligne.Debut) / 60) : '', note: ligne.Note || '',
+    };
   }
-  return { id: null, lot: lotParDefaut || '', date: versChamps(jour).date, debut: '', fin: '', note: '' };
+  return { id: null, lot: lotParDefaut || '', date: versChamps(jour).date, debut: '', fin: '', duree: '', note: '' };
 }
 
 /**
@@ -38,8 +82,18 @@ export function valeursInitiales(ligne, jour, lotParDefaut) {
  */
 export function actionsSaisie(v, { temps, ligne = null }) {
   if (!v.lot) return { erreur: 'Choisis une prestation.' };
-  const debut = depuisChamps(v.date, v.debut);
-  if (debut == null) return { erreur: 'Indique la date et l’heure de début.' };
+  const jour = depuisChamps(v.date, '00:00');
+  if (jour == null) return { erreur: 'Indique la date.' };
+  let debut = depuisChamps(v.date, v.debut);
+  if (v.debut && debut == null) return { erreur: 'L’heure de début n’est pas lisible.' };
+  if (!v.fin && v.duree) {
+    // Durée seule : la fin suit le début, ou le temps se place après le dernier de la journée.
+    const min = lireDuree(v.duree);
+    if (min == null) return { erreur: 'La durée n’est pas lisible : tape par exemple 0,25 ou 1h30.' };
+    if (debut == null) debut = debutAuto(temps, jour, ligne?.id);
+    return enregistrer(v, ligne, debut, debut + min * 60);
+  }
+  if (debut == null) return { erreur: 'Indique une durée, ou une heure de début.' };
   let fin = null;
   if (v.fin) {
     fin = depuisChamps(v.date, v.fin);
@@ -48,6 +102,10 @@ export function actionsSaisie(v, { temps, ligne = null }) {
   } else if (temps.some((r) => r.Debut && !r.Fin && r.id !== ligne?.id)) {
     return { erreur: 'Un chrono tourne déjà : indique une heure de fin.' };
   }
+  return enregistrer(v, ligne, debut, fin);
+}
+
+function enregistrer(v, ligne, debut, fin) {
   const champs = { ...champsDuLot(v.lot), Debut: debut, Fin: fin, Note: (v.note || '').trim() };
   if (ligne) return { actions: [['UpdateRecord', TABLE_TEMPS, ligne.id, champs]] };
   return { actions: [['AddRecord', TABLE_TEMPS, null, { ...champs, Session: Math.floor(debut) }]] };

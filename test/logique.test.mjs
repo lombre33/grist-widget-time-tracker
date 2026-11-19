@@ -6,7 +6,7 @@ import { SOURCES, COLONNES_TEMPS, planifier, planVide, actionsDuPlan } from '../
 import { segmentOuvert, demarrer, changer, arreter, noter } from '../js/session.js';
 import { enLignes, minuit, minutesDepuis, libelleLot, construireVue } from '../js/vue.js';
 import { champsDuLot, texteChoix, tempsDuChrono, construireModele } from '../js/modele.js';
-import { versChamps, depuisChamps, valeursInitiales, actionsSaisie, actionSupprimer } from '../js/saisie.js';
+import { versChamps, depuisChamps, valeursInitiales, actionsSaisie, actionSupprimer, lireDuree, ecrireDuree, debutAuto, accorder } from '../js/saisie.js';
 
 // ---------- format
 
@@ -275,6 +275,11 @@ test('construireVue : après arrêt, la dernière session reste visible', () => 
   assert.equal(v.segments.length, 1);
 });
 
+test('construireVue : le temps en heures pour le survol des barres', () => {
+  const v = construireVue({ lots: LOTS, temps: [] }, T, null);
+  assert.equal(v.lots[0].infoTxt, 'Réel 7 h 00 sur 14 h 00 vendues (50 %)');
+});
+
 test('construireVue : lot sans jours vendus', () => {
   const v = construireVue({ lots: [{ id: 5, Nom: 'X', Jours_vendus: 0, Reel_min: 30 }], temps: [] }, T, null);
   assert.equal(v.lots[0].statut, 'Aucun jour vendu');
@@ -309,8 +314,8 @@ const S = (h, m = 0) => new Date(2026, 10, 18, h, m).getTime() / 1000;
 
 test('valeursInitiales : ligne existante ou nouveau temps', () => {
   assert.deepEqual(valeursInitiales({ id: 4, Lot: 1, Debut: S(9), Fin: S(10, 30), Note: 'n' }, 0, null),
-    { id: 4, lot: 1, date: '2026-11-18', debut: '09:00', fin: '10:30', note: 'n' });
-  assert.deepEqual(valeursInitiales(null, S(0), 2), { id: null, lot: 2, date: '2026-11-18', debut: '', fin: '', note: '' });
+    { id: 4, lot: 1, date: '2026-11-18', debut: '09:00', fin: '10:30', duree: '1,5', note: 'n' });
+  assert.deepEqual(valeursInitiales(null, S(0), 2), { id: null, lot: 2, date: '2026-11-18', debut: '', fin: '', duree: '', note: '' });
 });
 
 test('actionsSaisie : nouveau temps', () => {
@@ -326,12 +331,56 @@ test('actionsSaisie : correction d’une ligne, fin après minuit', () => {
 
 test('actionsSaisie : refus lisibles', () => {
   assert.match(actionsSaisie({ lot: '', date: '2026-11-18', debut: '09:00' }, { temps: [] }).erreur, /prestation/);
-  assert.match(actionsSaisie({ lot: '1', date: '', debut: '09:00' }, { temps: [] }).erreur, /début/);
+  assert.match(actionsSaisie({ lot: '1', date: '', debut: '09:00' }, { temps: [] }).erreur, /date/);
+  assert.match(actionsSaisie({ lot: '1', date: '2026-11-18' }, { temps: [] }).erreur, /durée, ou une heure de début/);
+  assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', duree: 'beaucoup' }, { temps: [] }).erreur, /0,25 ou 1h30/);
   assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', debut: '09:00', fin: '9h' }, { temps: [] }).erreur, /fin/);
   const ouvert = { id: 8, Debut: S(8), Fin: null };
   assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', debut: '09:00', fin: '' }, { temps: [ouvert] }).erreur, /chrono tourne/);
   // corriger le segment ouvert lui-même sans fin reste permis
   assert.ok(actionsSaisie({ lot: '1', date: '2026-11-18', debut: '07:30', fin: '' }, { temps: [ouvert], ligne: ouvert }).actions);
+});
+
+test('lireDuree : heures décimales, h et min', () => {
+  assert.equal(lireDuree('0.25'), 15);
+  assert.equal(lireDuree('0,25'), 15);
+  assert.equal(lireDuree(' 1,5 h '), 90);
+  assert.equal(lireDuree('2'), 120);
+  assert.equal(lireDuree('1h30'), 90);
+  assert.equal(lireDuree('1:05'), 65);
+  assert.equal(lireDuree('45 min'), 45);
+  for (const x of ['', '0', 'abc', '-1', '25', '1h3x']) assert.equal(lireDuree(x), null, x);
+  assert.equal(ecrireDuree(15), '0,25');
+  assert.equal(ecrireDuree(90), '1,5');
+  assert.equal(ecrireDuree(0), '');
+});
+
+test('debutAuto : après le dernier temps fini du jour, sinon 9 h', () => {
+  const j = S(0);
+  assert.equal(debutAuto([], j), S(9));
+  const temps = [{ id: 1, Debut: S(10), Fin: S(11) }, { id: 2, Debut: S(14), Fin: S(15, 30) }, { id: 3, Debut: S(16), Fin: null }, { id: 4, Debut: S(-10), Fin: S(-9) }];
+  assert.equal(debutAuto(temps, j), S(15, 30));
+  assert.equal(debutAuto(temps, j, 2), S(11), 'la ligne corrigée ne compte pas');
+});
+
+test('actionsSaisie : durée seule ou avec un début', () => {
+  const temps = [{ id: 1, Debut: S(10), Fin: S(11) }];
+  let r = actionsSaisie({ lot: '1', date: '2026-11-18', duree: '0,25', note: '' }, { temps });
+  assert.deepEqual(r.actions, [['AddRecord', 'Time_tracking', null, { Devis: 1, Debut: S(11), Fin: S(11, 15), Note: '', Session: S(11) }]]);
+  r = actionsSaisie({ lot: '1', date: '2026-11-18', debut: '14:00', duree: '1h30' }, { temps });
+  assert.deepEqual([r.actions[0][3].Debut, r.actions[0][3].Fin], [S(14), S(15, 30)]);
+  r = actionsSaisie({ lot: '1', date: '2026-11-18', debut: '14:00', fin: '15:00', duree: '3' }, { temps });
+  assert.equal(r.actions[0][3].Fin, S(15), 'une fin tapée l’emporte');
+  const ligne = { id: 1, Lot: 1, Debut: S(10), Fin: S(11) };
+  assert.equal(valeursInitiales(ligne, 0, null).duree, '1');
+});
+
+test('accorder : la durée donne la fin, début et fin donnent la durée', () => {
+  assert.deepEqual(accorder({ date: '2026-11-18', debut: '09:00', fin: '', duree: '1,5' }, 'duree'), { fin: '10:30' });
+  assert.deepEqual(accorder({ date: '2026-11-18', debut: '', fin: '10:00', duree: '1' }, 'duree'), { fin: '' });
+  assert.deepEqual(accorder({ date: '2026-11-18', debut: '09:00', fin: '09:15', duree: '' }, 'fin'), { duree: '0,25' });
+  assert.deepEqual(accorder({ date: '2026-11-18', debut: '23:00', fin: '01:00', duree: '' }, 'debut'), { duree: '2' });
+  assert.deepEqual(accorder({ date: '2026-11-18', debut: '09:00', fin: '', duree: '2' }, 'debut'), { fin: '11:00' });
 });
 
 test('actionSupprimer', () => {

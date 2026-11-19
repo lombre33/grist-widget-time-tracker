@@ -116,9 +116,11 @@ function ligneLot(l, i) {
       el('span', { class: 'chiffres' },
         el('strong', { 'data-live': `lots.${i}.reelTxt`, texte: l.reelTxt }),
         el('span', { class: 'discret', texte: ` / ${l.venduTxt}` }))),
-    el('div', { class: 'barre', role: 'presentation' },
-      el('div', { class: 'barre-base', 'data-live-w': `lots.${i}.base` }),
-      el('div', { class: 'barre-depasse', 'data-live-w': `lots.${i}.depasse` })),
+    // Au survol (ou au toucher), le temps en heures.
+    el('div', { class: 'barre-zone', role: 'img', tabindex: '0', 'data-info': l.infoTxt, 'data-live-info': `lots.${i}.infoTxt`, 'aria-label': l.infoTxt },
+      el('div', { class: 'barre', role: 'presentation' },
+        el('div', { class: 'barre-base', 'data-live-w': `lots.${i}.base` }),
+        el('div', { class: 'barre-depasse', 'data-live-w': `lots.${i}.depasse` }))),
     el('span', { class: 'lot-statut', 'data-live': `lots.${i}.statut`, texte: l.statut }));
 }
 
@@ -161,9 +163,11 @@ function fenetreSaisie(vue, saisie) {
         el('select', { id: 's-lot', name: 's-lot' }, el('option', { value: '', texte: '— Choisir une prestation —' }), options)),
       el('div', { class: 'grille-champs' },
         champSaisie('s-date', 'Date', { type: 'date', value: v.date }),
-        champSaisie('s-debut', 'Début', { type: 'time', value: v.debut }),
-        champSaisie('s-fin', 'Fin', { type: 'time', value: v.fin })),
-      el('p', { class: 'discret petit', texte: 'Fin vide : le chrono tourne depuis l’heure de début. Fin avant le début : elle tombe le lendemain.' }),
+        champSaisie('s-duree', 'Durée (h)', { type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '0,25', value: v.duree })),
+      el('p', { class: 'discret petit', texte: 'En heures : 0,25 = 15 min, 1,5 ou 1h30 = 1 h 30. Sans heure de début, le temps se place après le dernier de la journée.' }),
+      el('div', { class: 'grille-champs' },
+        champSaisie('s-debut', 'Début (facultatif)', { type: 'time', value: v.debut }),
+        champSaisie('s-fin', 'Fin (facultatif)', { type: 'time', value: v.fin })),
       champSaisie('s-note', 'Note', { type: 'text', value: v.note, autocomplete: 'off' }),
       saisie.erreur ? el('p', { class: 'erreur', role: 'alert', texte: saisie.erreur }) : null,
       el('div', { class: 'actions' },
@@ -186,7 +190,7 @@ export function principal(racine, vue, etat) {
   rafraichirVivant(racine, vue);
   if (fenetre) {
     fenetre.showModal();
-    (fenetre.querySelector('.erreur') ? fenetre.querySelector('#s-lot') : fenetre.querySelector(etat.saisie.valeurs.lot ? '#s-debut' : '#s-lot')).focus();
+    (fenetre.querySelector('.erreur') ? fenetre.querySelector('#s-lot') : fenetre.querySelector(etat.saisie.valeurs.lot ? '#s-duree' : '#s-lot')).focus();
     return;
   }
   if (focus === 'note' && !racine.querySelector('#note').disabled) {

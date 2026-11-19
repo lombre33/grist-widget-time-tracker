@@ -49,6 +49,7 @@ function etatLot(lot, ouvert, maintenant, minParJour) {
   else if (ratio > 0.85) etat = 'attention';
   return {
     reelMin: reel,
+    infoTxt: `Réel ${hm(reel)} sur ${hm(vendu)} vendues${vendu > 0 ? ` (${Math.round(ratio * 100)} %)` : ''}`,
     reelTxt: jours(reel, minParJour),
     base: Math.round(base * 10) / 10,
     depasse: depasse ? Math.round((100 - base) * 10) / 10 : 0,
