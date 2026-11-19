@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { hms, hm, jours, nbJours, ecart } from '../js/format.js';
 import { SOURCES, COLONNES_TEMPS, planifier, planVide, actionsDuPlan } from '../js/schema.js';
 import { segmentOuvert, demarrer, changer, arreter, noter } from '../js/session.js';
-import { enLignes, minuit, minutesDepuis, libelleLot, construireVue } from '../js/vue.js';
+import { enLignes, minuit, minutesDepuis, libelleLot, construireVue, entreesDuJour, estCorrection } from '../js/vue.js';
 import { champsDuLot, texteChoix, tempsDuChrono, construireModele } from '../js/modele.js';
 import { versChamps, depuisChamps, valeursInitiales, actionsSaisie, actionSupprimer, lireDuree, ecrireDuree, debutAuto, accorder } from '../js/saisie.js';
 
@@ -333,7 +333,7 @@ test('actionsSaisie : refus lisibles', () => {
   assert.match(actionsSaisie({ lot: '', date: '2026-11-18', debut: '09:00' }, { temps: [] }).erreur, /prestation/);
   assert.match(actionsSaisie({ lot: '1', date: '', debut: '09:00' }, { temps: [] }).erreur, /date/);
   assert.match(actionsSaisie({ lot: '1', date: '2026-11-18' }, { temps: [] }).erreur, /durée, ou une heure de début/);
-  assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', duree: 'beaucoup' }, { temps: [] }).erreur, /0,25 ou 1h30/);
+  assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', duree: 'beaucoup' }, { temps: [] }).erreur, /0,25, 1h30 ou -0,5/);
   assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', debut: '09:00', fin: '9h' }, { temps: [] }).erreur, /fin/);
   const ouvert = { id: 8, Debut: S(8), Fin: null };
   assert.match(actionsSaisie({ lot: '1', date: '2026-11-18', debut: '09:00', fin: '' }, { temps: [ouvert] }).erreur, /chrono tourne/);
@@ -349,7 +349,7 @@ test('lireDuree : heures décimales, h et min', () => {
   assert.equal(lireDuree('1h30'), 90);
   assert.equal(lireDuree('1:05'), 65);
   assert.equal(lireDuree('45 min'), 45);
-  for (const x of ['', '0', 'abc', '-1', '25', '1h3x']) assert.equal(lireDuree(x), null, x);
+  for (const x of ['', '0', 'abc', '-', '25', '-25', '1h3x']) assert.equal(lireDuree(x), null, x);
   assert.equal(ecrireDuree(15), '0,25');
   assert.equal(ecrireDuree(90), '1,5');
   assert.equal(ecrireDuree(0), '');
@@ -381,6 +381,27 @@ test('accorder : la durée donne la fin, début et fin donnent la durée', () =>
   assert.deepEqual(accorder({ date: '2026-11-18', debut: '09:00', fin: '09:15', duree: '' }, 'fin'), { duree: '0,25' });
   assert.deepEqual(accorder({ date: '2026-11-18', debut: '23:00', fin: '01:00', duree: '' }, 'debut'), { duree: '2' });
   assert.deepEqual(accorder({ date: '2026-11-18', debut: '09:00', fin: '', duree: '2' }, 'debut'), { fin: '11:00' });
+});
+
+test('correction : une durée négative retire du temps', () => {
+  assert.equal(lireDuree('-0,5'), -30);
+  assert.equal(lireDuree('−1h30'), -90);
+  assert.equal(ecrireDuree(-30), '-0,5');
+  const temps = [{ id: 1, Debut: S(10), Fin: S(11) }];
+  const r = actionsSaisie({ lot: '1', date: '2026-11-18', duree: '-0,5', note: 'trop compté' }, { temps });
+  assert.deepEqual(r.actions[0][3], { Devis: 1, Debut: S(11), Fin: S(10, 30), Note: 'trop compté', Session: S(11) });
+  const corr = { id: 2, Lot: 1, Debut: S(11), Fin: S(10, 30) };
+  assert.ok(estCorrection(corr));
+  assert.equal(debutAuto([...temps, corr], S(0)), S(11), 'une correction n’occupe pas de place');
+  assert.deepEqual(valeursInitiales(corr, 0, null), { id: 2, lot: 1, date: '2026-11-18', debut: '11:00', fin: '', duree: '-0,5', note: '' });
+  assert.deepEqual(accorder({ date: '2026-11-18', debut: '11:00', fin: '12:00', duree: '-0,5' }, 'duree'), { fin: '' });
+  assert.equal(minutesDepuis(corr, S(0), S(12)), -30);
+  const e = entreesDuJour([...temps, corr], new Map(), S(12), S(0));
+  assert.deepEqual(e.map((x) => [x.plage, x.duree]), [['Correction, 11:00', '−30 min'], ['10:00 – 11:00', '1 h 00']]);
+  const v = construireVue({ lots: [{ id: 1, Nom: 'A', Jours_vendus: 1, Reel_min: 30 }], temps: [...temps, corr] }, S(12), null);
+  assert.equal(v.jour.totalTxt, '30 min');
+  const neg = construireVue({ lots: [{ id: 1, Nom: 'A', Jours_vendus: 1, Reel_min: -30 }], temps: [] }, S(12), null);
+  assert.equal(neg.lots[0].base, 0, 'jamais sous zéro');
 });
 
 test('actionSupprimer', () => {

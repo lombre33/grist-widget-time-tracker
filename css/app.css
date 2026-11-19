@@ -138,6 +138,7 @@ input[type="text"] { height: 44px; border: 1px solid var(--trait); border-radius
 .barre { height: 10px; border-radius: 999px; background: var(--fond); overflow: hidden; display: flex; }
 .barre-base { height: 100%; background: var(--accent); transition: width .4s; }
 .barre-depasse { height: 100%; background: var(--depasse); transition: width .4s; }
+.correction { color: var(--depasse-encre); }
 .lot-statut { font-size: 12px; color: var(--discret); }
 .lot[data-etat="ok"] .lot-statut { display: none; } /* le reste se lit sur la barre ; l'alerte seule s'affiche */
 .lot[data-etat="attention"] .lot-statut { color: var(--attention-encre); font-weight: 600; }

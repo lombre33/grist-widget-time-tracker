@@ -20,8 +20,12 @@ export function minuit(sec) {
 const fin = (r, maintenant) => (r.Fin ? r.Fin : maintenant);
 
 /** Minutes d'une ligne de Temps comprises après `depuis`. */
+/** Une correction : temps retiré, saisi avec une fin avant le début (Duree_min négative). */
+export const estCorrection = (r) => Boolean(r.Fin && r.Debut && r.Fin < r.Debut);
+
 export function minutesDepuis(r, depuis, maintenant) {
   if (!r.Debut) return 0;
+  if (estCorrection(r)) return r.Debut >= depuis ? (r.Fin - r.Debut) / 60 : 0;
   return Math.max(0, fin(r, maintenant) - Math.max(r.Debut, depuis)) / 60;
 }
 
@@ -33,7 +37,7 @@ export function libelleLot(lot) {
 
 function etatLot(lot, ouvert, maintenant, minParJour) {
   const vivant = ouvert && ouvert.Lot === lot.id ? (maintenant - ouvert.Debut) / 60 : 0;
-  const reel = (Number(lot.Reel_min) || 0) + vivant;
+  const reel = Math.max(0, (Number(lot.Reel_min) || 0) + vivant); // les corrections ne font pas passer sous zéro
   const vendu = (Number(lot.Jours_vendus) || 0) * minParJour;
   const ratio = vendu > 0 ? reel / vendu : (reel > 0 ? Infinity : 0);
   const depasse = ratio > 1;
@@ -71,7 +75,7 @@ function segmentsDeSession(temps, ouvert, parId, maintenant) {
     num: i + 1,
     libelle: libelleLot(parId.get(r.Lot)),
     note: r.Note || (r.Fin ? 'Sans note' : 'En cours'),
-    duree: hms(fin(r, maintenant) - r.Debut),
+    duree: estCorrection(r) ? `−${hms(r.Debut - r.Fin)}` : hms(fin(r, maintenant) - r.Debut),
     a: r.Fin ? `à ${hms(r.Fin - depart)}` : 'maintenant',
     ouvert: !r.Fin,
   })).reverse();
@@ -79,7 +83,7 @@ function segmentsDeSession(temps, ouvert, parId, maintenant) {
 
 function vueJour(temps, maintenant, minParJour) {
   const depuis = minuit(maintenant);
-  const total = temps.reduce((s, r) => s + minutesDepuis(r, depuis, maintenant), 0);
+  const total = Math.max(0, temps.reduce((s, r) => s + minutesDepuis(r, depuis, maintenant), 0));
   const reste = minParJour - total;
   return {
     totalTxt: hm(total),
@@ -94,14 +98,15 @@ const heureTxt = (sec) => new Date(sec * 1000).toLocaleTimeString('fr-FR', { hou
 export function entreesDuJour(temps, parId, maintenant, jour = minuit(maintenant)) {
   const lendemain = minuit(jour + 36 * 3600);
   return temps
-    .filter((r) => r.Debut && r.Debut < lendemain && fin(r, maintenant) > jour)
+    .filter((r) => r.Debut && r.Debut < lendemain && (estCorrection(r) ? r.Debut >= jour : fin(r, maintenant) > jour))
     .sort((a, b) => b.Debut - a.Debut)
     .map((r) => ({
       id: r.id,
       libelle: libelleLot(parId.get(r.Lot)),
       note: r.Note || (r.Fin ? 'Sans note' : 'En cours'),
-      plage: `${heureTxt(r.Debut)} – ${r.Fin ? heureTxt(r.Fin) : 'en cours'}`,
-      duree: hm(minutesEntre(r, jour, lendemain, maintenant)),
+      plage: estCorrection(r) ? `Correction, ${heureTxt(r.Debut)}` : `${heureTxt(r.Debut)} – ${r.Fin ? heureTxt(r.Fin) : 'en cours'}`,
+      duree: estCorrection(r) ? `−${hm((r.Debut - r.Fin) / 60)}` : hm(minutesEntre(r, jour, lendemain, maintenant)),
+      correction: estCorrection(r),
     }));
 }
 

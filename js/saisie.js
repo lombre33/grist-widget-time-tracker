@@ -26,23 +26,27 @@ export function depuisChamps(date, heure) {
  * Une durée tapée -> minutes, ou null. Heures décimales (« 0.25 », « 0,25 » = 15 min), « 1h30 », « 1:30 », « 45 min ».
  */
 export function lireDuree(texte) {
-  const t = String(texte || '').trim().toLowerCase().replace(/\s+/g, '');
+  // Un signe moins (« -0,5 ») fait une correction : du temps retiré.
+  const brut = String(texte || '').trim().toLowerCase().replace(/\s+/g, '');
+  const signe = /^[-−]/.test(brut) ? -1 : 1;
+  const t = brut.replace(/^[-−+]/, '');
   let m = /^(\d+(?:[.,]\d+)?)h?$/.exec(t);
   let min = null;
   if (m) min = Number(m[1].replace(',', '.')) * 60;
   else if ((m = /^(\d+)[h:](\d{1,2})(?:m|min|mn)?$/.exec(t))) min = Number(m[1]) * 60 + Number(m[2]);
   else if ((m = /^(\d+)(?:m|min|mn)$/.exec(t))) min = Number(m[1]);
-  return min > 0 && min <= 24 * 60 ? Math.round(min * 100) / 100 : null;
+  return min > 0 && min <= 24 * 60 ? (signe * Math.round(min * 100)) / 100 : null;
 }
 
 /** Minutes -> heures décimales lisibles (« 1,5 », « 0,25 »). */
 export function ecrireDuree(min) {
-  return min > 0 ? String(Math.round((min / 60) * 100) / 100).replace('.', ',') : '';
+  return min ? String(Math.round((min / 60) * 100) / 100).replace('.', ',') : '';
 }
 
 /** Début d'un temps saisi par sa seule durée : après le dernier temps fini du jour, sinon 9 h. */
 export function debutAuto(temps, jour, sauf = null) {
-  const fins = temps.filter((r) => r.id !== sauf && r.Fin && r.Debut >= jour && r.Debut < jour + 86400).map((r) => r.Fin);
+  // Une correction (fin avant le début) n'occupe pas de place : seul son début compte.
+  const fins = temps.filter((r) => r.id !== sauf && r.Fin && r.Debut >= jour && r.Debut < jour + 86400).map((r) => Math.max(r.Fin, r.Debut));
   return fins.length ? Math.max(...fins) : jour + 9 * 3600;
 }
 
@@ -54,7 +58,7 @@ export function accorder({ date, debut, fin, duree }, source) {
   const d = depuisChamps(date || '2000-01-01', debut);
   if (source === 'duree' || (source === 'debut' && !fin && duree)) {
     const min = lireDuree(duree);
-    if (d == null || min == null) return { fin: '' };
+    if (d == null || min == null || min < 0) return { fin: '' }; // une correction n'a pas d'heure de fin
     return { fin: versChamps(d + min * 60).heure };
   }
   let f = depuisChamps(date || '2000-01-01', fin);
@@ -68,7 +72,7 @@ export function valeursInitiales(ligne, jour, lotParDefaut) {
   if (ligne) {
     const debut = versChamps(ligne.Debut);
     return {
-      id: ligne.id, lot: ligne.Lot, date: debut.date, debut: debut.heure, fin: versChamps(ligne.Fin).heure,
+      id: ligne.id, lot: ligne.Lot, date: debut.date, debut: debut.heure, fin: ligne.Fin > ligne.Debut ? versChamps(ligne.Fin).heure : '',
       duree: ligne.Fin ? ecrireDuree((ligne.Fin - ligne.Debut) / 60) : '', note: ligne.Note || '',
     };
   }
@@ -89,7 +93,7 @@ export function actionsSaisie(v, { temps, ligne = null }) {
   if (!v.fin && v.duree) {
     // Durée seule : la fin suit le début, ou le temps se place après le dernier de la journée.
     const min = lireDuree(v.duree);
-    if (min == null) return { erreur: 'La durée n’est pas lisible : tape par exemple 0,25 ou 1h30.' };
+    if (min == null) return { erreur: 'La durée n’est pas lisible : tape par exemple 0,25, 1h30 ou -0,5.' };
     if (debut == null) debut = debutAuto(temps, jour, ligne?.id);
     return enregistrer(v, ligne, debut, debut + min * 60);
   }

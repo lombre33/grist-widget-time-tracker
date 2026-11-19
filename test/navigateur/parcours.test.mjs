@@ -126,6 +126,17 @@ async function parcours(nav, s) {
   const appel = lignes.find((r) => r.Note === 'Appel rapide');
   assert.ok(appel && appel.Fin - appel.Debut === 900, '0,25 h = 15 min');
 
+  // Correction : -0,25 retire 15 min.
+  await page.getByRole('button', { name: 'Ajouter un temps' }).click();
+  await page.getByLabel('Durée (h)').fill('-0,25');
+  await page.locator('#s-note').fill('Retrait');
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await page.waitForTimeout(300);
+  lignes = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
+  const retrait = lignes.find((r) => r.Note === 'Retrait');
+  assert.ok(retrait && retrait.Fin - retrait.Debut === -900 && retrait.Duree_min === -15, 'temps retiré');
+  assert.match(await page.locator('.entrees').innerText(), /−15 min/);
+
   // Survol d'une barre : le temps en heures.
   await page.locator('.barre-zone').first().hover();
   assert.match(await page.locator('.barre-zone').first().getAttribute('data-info'), /^Réel .* sur 14 h 00 vendues/);

@@ -12,7 +12,8 @@ Widget personnalisé pour [Grist](https://www.getgrist.com/), sans framework ni 
 - **Journée** : temps du jour sur 7 h, série de jours d'affilée.
 - **Entrées** jour par jour, avec **saisie et correction à la main** (oubli de lancer ou d'arrêter le chrono) :
   ajouter, modifier, supprimer (avec confirmation). Une durée seule suffit (0,25 = 15 min, ou 1h30) : le temps se
-  place après le dernier de la journée. Une fin vide (sans durée) relance le chrono depuis l’heure de début.
+  place après le dernier de la journée. Une durée négative (-0,5) retire du temps : c'est une correction (fin avant
+  le début dans `Time_tracking`, `Duree_min` négative). Une fin vide (sans durée) relance le chrono depuis l’heure de début.
 - Au survol d’une barre « vendu vs réel », le temps en heures.
 - Ordinateur et téléphone (une colonne sous 760 px), clair et sombre.
 

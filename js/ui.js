@@ -138,7 +138,7 @@ function carteEntrees(vue) {
         el('div', { class: 'seg-txt' },
           el('span', { class: 'fort', texte: e.libelle }),
           el('span', { class: 'discret', texte: `${e.plage} · ${e.note}` })),
-        el('span', { class: 'fort chiffres', 'data-live': `entrees.${i}.duree`, texte: e.duree }),
+        el('span', { class: `fort chiffres${e.correction ? ' correction' : ''}`, 'data-live': `entrees.${i}.duree`, texte: e.duree }),
         el('button', { type: 'button', class: 'icone-btn', 'data-action': 'modifier', 'data-id': e.id, 'aria-label': `Modifier ${e.libelle}, ${e.plage}` }, icone(I.crayon, { taille: 18 })))))
       : el('p', { class: 'vide', texte: estAujourdhui ? 'Rien encore aujourd’hui.' : 'Aucun temps ce jour-là.' }),
     el('button', { type: 'button', class: 'bouton-secondaire', 'data-action': 'ajouter-temps' }, icone(I.plus, { taille: 18 }), 'Ajouter un temps'));
@@ -163,8 +163,8 @@ function fenetreSaisie(vue, saisie) {
         el('select', { id: 's-lot', name: 's-lot' }, el('option', { value: '', texte: '— Choisir une prestation —' }), options)),
       el('div', { class: 'grille-champs' },
         champSaisie('s-date', 'Date', { type: 'date', value: v.date }),
-        champSaisie('s-duree', 'Durée (h)', { type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: '0,25', value: v.duree })),
-      el('p', { class: 'discret petit', texte: 'En heures : 0,25 = 15 min, 1,5 ou 1h30 = 1 h 30. Sans heure de début, le temps se place après le dernier de la journée.' }),
+        champSaisie('s-duree', 'Durée (h)', { type: 'text', autocomplete: 'off', placeholder: '0,25', value: v.duree })),
+      el('p', { class: 'discret petit', texte: 'En heures : 0,25 = 15 min, 1,5 ou 1h30 = 1 h 30, -0,5 retire 30 min. Sans heure de début, le temps se place après le dernier de la journée.' }),
       el('div', { class: 'grille-champs' },
         champSaisie('s-debut', 'Début (facultatif)', { type: 'time', value: v.debut }),
         champSaisie('s-fin', 'Fin (facultatif)', { type: 'time', value: v.fin })),
