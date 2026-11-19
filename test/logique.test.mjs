@@ -80,9 +80,9 @@ test('planifier : Time_tracking absente -> AddTable', () => {
 test('planifier : sources manquantes listées, rien créé chez elles', () => {
   const ex = complet();
   delete ex.DEVIS;
-  ex.Table1 = ['id', 'Missions'];
+  ex.Table1 = ['id'];
   const plan = planifier(ex);
-  assert.deepEqual(plan.manquantes, ['table DEVIS', 'colonne Table1.heures']);
+  assert.deepEqual(plan.manquantes, ['table DEVIS', 'colonne Table1.Missions']);
 });
 
 // ---------- modèle (gestion client -> prestations)
@@ -104,12 +104,13 @@ const SRC = {
   missions: [{ id: 10, numero: 'M-001', date: 100, Client: 1 }, { id: 11, numero: 'M-002', date: 200, Client: 0 }],
   prestations: [{ id: 5, Missions: 'Ateliers', heures: 14 }, { id: 6, Missions: 'Écrans', heures: 7 }],
   devis: [
-    { id: 1, Mission: 10, prestations: 5, Lots: 'Cadrage' },
-    { id: 2, Mission: 10, prestations: 6, Lots: '' },
+    // Dev 14 h ; retours et imprévu au pourcentage relu dans les colonnes en euros (20 %, 10 %, 10 %).
+    { id: 1, Mission: 10, prestations: 5, Lots: 'Cadrage', Heures_retenues: 14, Prix: 1000, retour_user: 200, retour_finaux: 100, Imprevu_buffer: 100 },
+    { id: 2, Mission: 10, prestations: 6, Lots: '', Heures_retenues: 7 },
     { id: 3, Mission: 11, prestations: 6, Lots: ['L', 'A', 'B'] },
     { id: 4, Mission: 0, prestations: 6, Lots: 'X' },
   ],
-  temps: [{ id: 1, Devis: 1, Debut: 1000, Fin: 4600, Duree_min: 60 }, { id: 2, Devis: 1, Debut: 5000, Fin: 5600, Duree_min: 10 }, { id: 3, Devis: 0 }],
+  temps: [{ id: 1, Devis: 1, Debut: 1000, Fin: 4600, Duree_min: 60 }, { id: 2, Devis: 1, Phase: 'Retour user', Debut: 5000, Fin: 5600, Duree_min: 10 }, { id: 3, Devis: 0 }],
 };
 
 test('construireModele : une prestation par ligne de devis, vendu = heures de la prestation', () => {
@@ -117,14 +118,17 @@ test('construireModele : une prestation par ligne de devis, vendu = heures de la
   const parId = Object.fromEntries(lots.map((l) => [l.id, l]));
   assert.deepEqual(lots.map((l) => l.id), [3, 1, 2], 'mission la plus récente d’abord, puis l’ordre du devis');
   assert.equal(parId[1].Nom, 'Ateliers');
-  assert.equal(parId[1].Jours_vendus, 2);
+  assert.deepEqual(parId[1].Vendu_phases, { dev: 2, retour_user: 0.4, retour_finaux: 0.2, imprevu: 0.2 });
+  assert.ok(Math.abs(parId[1].Jours_vendus - 2.8) < 1e-9);
+  assert.deepEqual(parId[1].Reel_phases, { dev: 60, retour_user: 10, retour_finaux: 0, imprevu: 0 });
   assert.equal(parId[1].Reel_min, 70);
+  assert.deepEqual(parId[2].Vendu_phases, { dev: 1, retour_user: 0.2, retour_finaux: 0.1, imprevu: 0.1 }, 'sans Prix : 20, 10 et 10 %');
   assert.equal(parId[1].Client_nom, 'Atelier Mira');
   assert.equal(parId[1].Projet_nom, 'M-001 · Cadrage');
   assert.equal(parId[2].Projet_nom, 'M-001');
   assert.equal(parId[3].Projet_nom, 'M-002 · A, B');
   assert.equal(parId[3].Client_nom, '');
-  assert.equal(temps.length, 2);
+  assert.deepEqual(temps.map((r) => r.Phase), ['dev', 'retour_user'], 'sans phase : dev initial');
 });
 
 test('construireModele : prestation absente de Table1', () => {
@@ -148,7 +152,8 @@ test('segmentOuvert : le plus récent sans fin', () => {
 });
 
 test('demarrer', () => {
-  assert.deepEqual(demarrer(7, T + 0.5), [['AddRecord', 'Time_tracking', null, { Devis: 7, Debut: T + 0.5, Session: T }]]);
+  assert.deepEqual(demarrer(7, T + 0.5), [['AddRecord', 'Time_tracking', null, { Devis: 7, Phase: 'Dev initial', Debut: T + 0.5, Session: T }]]);
+  assert.equal(demarrer(7, T, 'imprevu')[0][3].Phase, 'Imprévu');
   assert.throws(() => demarrer(null, T));
 });
 
@@ -156,8 +161,11 @@ test('changer : ferme le segment et en ouvre un dans la même session', () => {
   const ouvert = { id: 9, Lot: 1, Debut: T, Session: T };
   assert.deepEqual(changer(ouvert, 2, T + 600), [
     ['UpdateRecord', 'Time_tracking', 9, { Fin: T + 600 }],
-    ['AddRecord', 'Time_tracking', null, { Devis: 2, Debut: T + 600, Session: T }],
+    ['AddRecord', 'Time_tracking', null, { Devis: 2, Phase: 'Dev initial', Debut: T + 600, Session: T }],
   ]);
+  const phase = changer({ ...ouvert, Phase: 'dev' }, 1, T + 60, 'retour_user');
+  assert.deepEqual(phase[1][3], { Devis: 1, Phase: 'Retour user', Debut: T + 60, Session: T }, 'changer de phase = milestone');
+  assert.equal(changer({ ...ouvert, Phase: 'retour_user' }, 2, T + 60)[1][3].Phase, 'Retour user', 'la phase suit');
 });
 
 test('changer : même lot ou rien d’ouvert -> rien', () => {
@@ -234,7 +242,8 @@ test('construireVue : chrono arrêté, lot choisi par défaut = premier actif', 
   assert.equal(v.horloge, '0:00:00');
   assert.deepEqual(v.lots.map((l) => l.id), [1, 2]);
   assert.equal(v.lots[0].reelTxt, '1,0 j');
-  assert.equal(v.lots[0].base, 50);
+  assert.deepEqual(v.lots[0].parts, { dev: 50, retour_user: 0, retour_finaux: 0, imprevu: 0 });
+  assert.equal(v.lots[0].repere, 100);
   assert.equal(v.lots[0].etat, 'ok');
   assert.equal(v.lots[1].etat, 'attention');
   assert.equal(v.segments.length, 0);
@@ -253,7 +262,8 @@ test('construireVue : le segment ouvert compte en direct et provoque le dépasse
   const maq = v.lots.find((l) => l.id === 2);
   assert.equal(maq.etat, 'depasse'); // 400 + 30 > 420
   assert.equal(maq.statut, 'Dépassement de 10 min');
-  assert.ok(maq.base + maq.depasse > 99.9);
+  assert.equal(maq.parts.dev, 100);
+  assert.equal(maq.repere, 97.7, 'le vendu, 420 sur 430 min');
   assert.equal(v.segments.length, 2);
   assert.equal(v.segments[0].ouvert, true);
   assert.equal(v.segments[0].a, 'maintenant');
@@ -261,7 +271,7 @@ test('construireVue : le segment ouvert compte en direct et provoque le dépasse
   assert.equal(v.segments[1].a, 'à 0:10:00');
   assert.equal(v.jour.totalTxt, '40 min');
   assert.equal(v.entrees.length, 2);
-  assert.equal(v.entrees[0].note, 'En cours');
+  assert.equal(v.entrees[0].note, 'Dev initial · En cours');
 });
 
 test('construireVue : après arrêt, la dernière session reste visible', () => {
@@ -280,10 +290,31 @@ test('construireVue : le temps en heures pour le survol des barres', () => {
   assert.equal(v.lots[0].infoTxt, 'Réel 7 h 00 sur 14 h 00 vendues (50 %)');
 });
 
+test('construireVue : suivi par phase, barres découpées par phase', () => {
+  const lot = {
+    id: 1, Nom: 'A', Mission: 1, Vendu_phases: { dev: 1, retour_user: 0.2, retour_finaux: 0.1, imprevu: 0.1 },
+    Reel_phases: { dev: 210, retour_user: 84, retour_finaux: 0, imprevu: 0 },
+  };
+  const ouvert = { id: 9, Lot: 1, Phase: 'retour_user', Debut: T - 600, Fin: null, Session: T - 600 };
+  let v = construireVue({ lots: [lot], temps: [ouvert] }, T, null);
+  assert.equal(v.phaseCourante, 'retour_user', 'la phase du chrono en cours');
+  assert.equal(v.vuePhase, 'tout');
+  assert.equal(v.lots[0].venduTxt, '1,4 j vendus');
+  assert.deepEqual(v.lots[0].parts, { dev: 35.7, retour_user: 16, retour_finaux: 0, imprevu: 0 }, 'sur 588 min vendues');
+  assert.match(v.lots[0].infoTxt, / · Dev initial 3 h 30 · Retour user 1 h 34$/);
+  v = construireVue({ lots: [lot], temps: [ouvert] }, T, null, null, { vuePhase: 'retour_user' });
+  assert.equal(v.lots[0].venduTxt, '0,2 j vendus');
+  assert.equal(v.lots[0].etat, 'depasse', '94 min sur 84');
+  assert.deepEqual(v.lots[0].parts, { dev: 0, retour_user: 100, retour_finaux: 0, imprevu: 0 });
+  assert.equal(v.lots[0].repere, 89.4);
+  assert.equal(v.totalMission.venduTxt, '0,2 j vendus');
+  assert.equal(construireVue({ lots: [lot], temps: [] }, T, null, null, { phase: 'imprevu', vuePhase: 'x' }).phaseCourante, 'imprevu');
+});
+
 test('construireVue : lot sans jours vendus', () => {
   const v = construireVue({ lots: [{ id: 5, Nom: 'X', Jours_vendus: 0, Reel_min: 30 }], temps: [] }, T, null);
   assert.equal(v.lots[0].statut, 'Aucun jour vendu');
-  assert.ok(Number.isFinite(v.lots[0].base));
+  assert.ok(Number.isFinite(v.lots[0].parts.dev));
 });
 
 test('construireVue : aucun lot', () => {
@@ -314,19 +345,19 @@ const S = (h, m = 0) => new Date(2026, 10, 18, h, m).getTime() / 1000;
 
 test('valeursInitiales : ligne existante ou nouveau temps', () => {
   assert.deepEqual(valeursInitiales({ id: 4, Lot: 1, Debut: S(9), Fin: S(10, 30), Note: 'n' }, 0, null),
-    { id: 4, lot: 1, date: '2026-11-18', debut: '09:00', fin: '10:30', duree: '1,5', note: 'n' });
-  assert.deepEqual(valeursInitiales(null, S(0), 2), { id: null, lot: 2, date: '2026-11-18', debut: '', fin: '', duree: '', note: '' });
+    { id: 4, lot: 1, phase: 'dev', date: '2026-11-18', debut: '09:00', fin: '10:30', duree: '1,5', note: 'n' });
+  assert.deepEqual(valeursInitiales(null, S(0), 2), { id: null, lot: 2, phase: 'dev', date: '2026-11-18', debut: '', fin: '', duree: '', note: '' });
 });
 
 test('actionsSaisie : nouveau temps', () => {
   const r = actionsSaisie({ lot: '1', date: '2026-11-18', debut: '09:00', fin: '10:30', note: ' oubli ' }, { temps: [] });
-  assert.deepEqual(r.actions, [['AddRecord', 'Time_tracking', null, { Devis: 1, Debut: S(9), Fin: S(10, 30), Note: 'oubli', Session: S(9) }]]);
+  assert.deepEqual(r.actions, [['AddRecord', 'Time_tracking', null, { Devis: 1, Phase: 'Dev initial', Debut: S(9), Fin: S(10, 30), Note: 'oubli', Session: S(9) }]]);
 });
 
 test('actionsSaisie : correction d’une ligne, fin après minuit', () => {
   const ligne = { id: 4, Lot: 1, Debut: S(9), Fin: null };
   const r = actionsSaisie({ lot: '2', date: '2026-11-18', debut: '23:00', fin: '01:00', note: '' }, { temps: [ligne], ligne });
-  assert.deepEqual(r.actions, [['UpdateRecord', 'Time_tracking', 4, { Devis: 2, Debut: S(23), Fin: S(25), Note: '' }]]);
+  assert.deepEqual(r.actions, [['UpdateRecord', 'Time_tracking', 4, { Devis: 2, Phase: 'Dev initial', Debut: S(23), Fin: S(25), Note: '' }]]);
 });
 
 test('actionsSaisie : refus lisibles', () => {
@@ -366,7 +397,7 @@ test('debutAuto : après le dernier temps fini du jour, sinon 9 h', () => {
 test('actionsSaisie : durée seule ou avec un début', () => {
   const temps = [{ id: 1, Debut: S(10), Fin: S(11) }];
   let r = actionsSaisie({ lot: '1', date: '2026-11-18', duree: '0,25', note: '' }, { temps });
-  assert.deepEqual(r.actions, [['AddRecord', 'Time_tracking', null, { Devis: 1, Debut: S(11), Fin: S(11, 15), Note: '', Session: S(11) }]]);
+  assert.deepEqual(r.actions, [['AddRecord', 'Time_tracking', null, { Devis: 1, Phase: 'Dev initial', Debut: S(11), Fin: S(11, 15), Note: '', Session: S(11) }]]);
   r = actionsSaisie({ lot: '1', date: '2026-11-18', debut: '14:00', duree: '1h30' }, { temps });
   assert.deepEqual([r.actions[0][3].Debut, r.actions[0][3].Fin], [S(14), S(15, 30)]);
   r = actionsSaisie({ lot: '1', date: '2026-11-18', debut: '14:00', fin: '15:00', duree: '3' }, { temps });
@@ -389,11 +420,11 @@ test('correction : une durée négative retire du temps', () => {
   assert.equal(ecrireDuree(-30), '-0,5');
   const temps = [{ id: 1, Debut: S(10), Fin: S(11) }];
   const r = actionsSaisie({ lot: '1', date: '2026-11-18', duree: '-0,5', note: 'trop compté' }, { temps });
-  assert.deepEqual(r.actions[0][3], { Devis: 1, Debut: S(11), Fin: S(10, 30), Note: 'trop compté', Session: S(11) });
+  assert.deepEqual(r.actions[0][3], { Devis: 1, Phase: 'Dev initial', Debut: S(11), Fin: S(10, 30), Note: 'trop compté', Session: S(11) });
   const corr = { id: 2, Lot: 1, Debut: S(11), Fin: S(10, 30) };
   assert.ok(estCorrection(corr));
   assert.equal(debutAuto([...temps, corr], S(0)), S(11), 'une correction n’occupe pas de place');
-  assert.deepEqual(valeursInitiales(corr, 0, null), { id: 2, lot: 1, date: '2026-11-18', debut: '11:00', fin: '', duree: '-0,5', note: '' });
+  assert.deepEqual(valeursInitiales(corr, 0, null), { id: 2, lot: 1, phase: 'dev', date: '2026-11-18', debut: '11:00', fin: '', duree: '-0,5', note: '' });
   assert.deepEqual(accorder({ date: '2026-11-18', debut: '11:00', fin: '12:00', duree: '-0,5' }, 'duree'), { fin: '' });
   assert.equal(minutesDepuis(corr, S(0), S(12)), -30);
   const e = entreesDuJour([...temps, corr], new Map(), S(12), S(0));
@@ -401,7 +432,7 @@ test('correction : une durée négative retire du temps', () => {
   const v = construireVue({ lots: [{ id: 1, Nom: 'A', Jours_vendus: 1, Reel_min: 30 }], temps: [...temps, corr] }, S(12), null);
   assert.equal(v.jour.totalTxt, '30 min');
   const neg = construireVue({ lots: [{ id: 1, Nom: 'A', Jours_vendus: 1, Reel_min: -30 }], temps: [] }, S(12), null);
-  assert.equal(neg.lots[0].base, 0, 'jamais sous zéro');
+  assert.equal(neg.lots[0].parts.dev, 0, 'jamais sous zéro');
 });
 
 test('actionSupprimer', () => {

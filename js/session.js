@@ -4,6 +4,7 @@
 
 import { TABLE_TEMPS } from './schema.js';
 import { champsDuLot } from './modele.js';
+import { PHASE_DEFAUT, nomPhase } from './phases.js';
 
 /** Le segment ouvert le plus récent, ou null. */
 export function segmentOuvert(temps) {
@@ -14,21 +15,24 @@ export function segmentOuvert(temps) {
   return ouvert;
 }
 
-const ajout = (cle, sec, session) => [
-  'AddRecord', TABLE_TEMPS, null, { ...champsDuLot(cle), Debut: sec, Session: session },
+const ajout = (cle, phase, sec, session) => [
+  'AddRecord', TABLE_TEMPS, null, { ...champsDuLot(cle), Phase: nomPhase(phase), Debut: sec, Session: session },
 ];
 const fermeture = (ligne, sec) => ['UpdateRecord', TABLE_TEMPS, ligne.id, { Fin: Math.max(sec, ligne.Debut) }];
 
 /** Démarre le chrono sur une prestation. `sec` : secondes depuis l'époque Unix. */
-export function demarrer(lotId, sec) {
+export function demarrer(lotId, sec, phase = PHASE_DEFAUT) {
   if (!lotId) throw new Error('Aucune prestation choisie');
-  return [ajout(lotId, sec, Math.floor(sec))];
+  return [ajout(lotId, phase, sec, Math.floor(sec))];
 }
 
-/** Change de prestation pendant le chrono : ferme le segment ouvert et en ouvre un nouveau dans la même session. */
-export function changer(ouvert, lotId, sec) {
-  if (!ouvert || ouvert.Lot === lotId) return [];
-  return [fermeture(ouvert, sec), ajout(lotId, sec, ouvert.Session || Math.floor(ouvert.Debut))];
+/**
+ * Change de prestation ou de phase pendant le chrono : ferme le segment ouvert et en ouvre un nouveau dans la même
+ * session. La phase reste celle du segment ouvert si elle n'est pas donnée.
+ */
+export function changer(ouvert, lotId, sec, phase = ouvert?.Phase || PHASE_DEFAUT) {
+  if (!ouvert || (ouvert.Lot === lotId && (ouvert.Phase || PHASE_DEFAUT) === phase)) return [];
+  return [fermeture(ouvert, sec), ajout(lotId, phase, sec, ouvert.Session || Math.floor(ouvert.Debut))];
 }
 
 /** Arrête le chrono. */

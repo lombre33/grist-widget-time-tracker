@@ -52,7 +52,10 @@ async function parcours(nav, s) {
   await page.locator('.puce').first().waitFor();
   const cols = await page.evaluate(() => window.__fauxGrist.tables);
   assert.equal(await page.locator('.puce').count(), 2, 'une prestation par ligne de devis');
-  assert.match(await page.locator('.lot', { hasText: 'Écrans' }).innerText(), /3 j vendus/, '21 h = 3 j');
+  assert.match(await page.locator('.lot', { hasText: 'Écrans' }).innerText(), /4,2 j vendus/, 'toutes phases : 21 h × 1,4 = 4,2 j');
+  await page.getByRole('group', { name: 'Phase suivie' }).getByRole('button', { name: 'Dev initial' }).click();
+  assert.match(await page.locator('.lot', { hasText: 'Écrans' }).innerText(), /3 j vendus/, 'dev initial : 21 h = 3 j');
+  await page.getByRole('group', { name: 'Phase suivie' }).getByRole('button', { name: 'Tout' }).click();
   assert.equal(cols.Time_tracking.length, 0);
   assert.deepEqual(await page.locator('.minuteur .groupe-titre').allInnerTexts(), ['CADRAGE', 'MAQUETTES'], 'un titre par lot de la mission');
   await page.getByLabel('Mission').selectOption({ label: 'Atelier Mira · M-2025-09' });
@@ -67,15 +70,19 @@ async function parcours(nav, s) {
   await page.waitForTimeout(1200);
   await page.locator('.puce', { hasText: 'Écrans' }).click();
   await page.waitForTimeout(300);
+  await page.getByRole('group', { name: 'Phase', exact: true }).getByRole('button', { name: 'Retour user' }).click();
+  await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(racine, 'test/navigateur/ordinateur.png') });
 
   const temps = await page.evaluate(() => window.__fauxGrist.tables.Time_tracking);
-  assert.equal(temps.length, 2);
+  assert.equal(temps.length, 3, 'changer de phase est un milestone');
   assert.deepEqual([temps[0].Devis, temps[1].Devis, temps[0].Mission, temps[1].Prestation], [1, 2, 1, 2]);
+  assert.deepEqual(temps.map((r) => [r.Devis, r.Phase]), [[1, 'Dev initial'], [2, 'Dev initial'], [2, 'Retour user']]);
+  assert.equal(temps[2].Session, temps[0].Session);
   assert.ok(temps[0].Fin, 'le premier segment est fermé');
   assert.equal(temps[0].Note, 'Atelier de cadrage');
   assert.equal(temps[1].Session, temps[0].Session);
-  assert.equal(await page.locator('.segments li').count(), 2);
+  assert.equal(await page.locator('.segments li').count(), 3);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(racine, 'test/navigateur/telephone.png'), fullPage: true });
@@ -139,7 +146,7 @@ async function parcours(nav, s) {
 
   // Survol d'une barre : le temps en heures.
   await page.locator('.barre-zone').first().hover();
-  assert.match(await page.locator('.barre-zone').first().getAttribute('data-info'), /^Réel .* sur 14 h 00 vendues/);
+  assert.match(await page.locator('.barre-zone').first().getAttribute('data-info'), /^Réel .* sur 19 h 36 vendues/);
 
   // Refus lisible : fin vide alors qu'aucun chrono ne tourne est permis, mais pas sans prestation.
   await page.getByRole('button', { name: 'Ajouter un temps' }).click();

@@ -32,6 +32,13 @@ function puces(vue) {
     el('div', { class: 'puces' }, g.lots.map(puce)))));
 }
 
+/** Boutons à une seule valeur choisie (phases). */
+function segmente(items, action, etiquette) {
+  return el('div', { class: 'segmente', role: 'group', 'aria-label': etiquette }, items.map((p) => el('button', {
+    type: 'button', 'data-action': action, 'data-phase': p.cle, 'aria-pressed': p.choisie ? 'true' : 'false',
+  }, p.cle !== 'tout' ? el('span', { class: `pastille-phase phase-${p.cle}`, 'aria-hidden': 'true' }) : null, p.nom)));
+}
+
 /** Choix de la mission affichée, ou son nom quand il n'y en a qu'une. */
 function choixMission(vue) {
   if (vue.missions.length < 2) return el('span', { class: 'discret petit', texte: vue.missionTxt });
@@ -57,9 +64,10 @@ function segments(vue) {
 
 function minuteur(vue) {
   return el('section', { class: 'carte minuteur', 'aria-label': 'Chronomètre' },
-    el('div', { class: 'ligne-titre' },
-      el('h2', { class: 'surtitre', texte: 'Sur quoi tu travailles' }),
-      choixMission(vue)),
+    el('h2', { class: 'surtitre', texte: 'Sur quoi tu travailles' }),
+    // La phase d'abord, puis la mission et ses prestations (demandé dans cet ordre).
+    segmente(vue.phases, 'phase', 'Phase'),
+    choixMission(vue),
     vue.lots.length ? puces(vue) : el('p', { class: 'vide', texte: 'Aucune prestation : ajoute une ligne de devis avec sa mission et sa prestation (table DEVIS).' }),
     el('div', { class: 'chrono' },
       el('div', { class: 'courant' },
@@ -98,6 +106,7 @@ function carteLots(vue) {
     el('div', { class: 'ligne-titre' },
       el('h2', { texte: 'Vendu vs réel' }),
       el('span', { class: 'discret petit', texte: vue.missionTxt })),
+    segmente(vue.vuesPhase, 'vue-phase', 'Phase suivie'),
     el('div', { class: 'total-mission' },
       el('span', { class: 'discret', texte: 'Mission' }),
       el('span', { class: 'chiffres' },
@@ -119,8 +128,9 @@ function ligneLot(l, i) {
     // Au survol (ou au toucher), le temps en heures.
     el('div', { class: 'barre-zone', role: 'img', tabindex: '0', 'data-info': l.infoTxt, 'data-live-info': `lots.${i}.infoTxt`, 'aria-label': l.infoTxt },
       el('div', { class: 'barre', role: 'presentation' },
-        el('div', { class: 'barre-base', 'data-live-w': `lots.${i}.base` }),
-        el('div', { class: 'barre-depasse', 'data-live-w': `lots.${i}.depasse` }))),
+        el('div', { class: 'remplissage' },
+          Object.keys(l.parts).map((k) => el('div', { class: `part phase-${k}`, 'data-live-w': `lots.${i}.parts.${k}` }))),
+        el('div', { class: 'barre-repere', 'data-live-left': `lots.${i}.repere` }))),
     el('span', { class: 'lot-statut', 'data-live': `lots.${i}.statut`, texte: l.statut }));
 }
 
@@ -162,8 +172,12 @@ function fenetreSaisie(vue, saisie) {
         el('label', { for: 's-lot', texte: 'Prestation' }),
         el('select', { id: 's-lot', name: 's-lot' }, el('option', { value: '', texte: '— Choisir une prestation —' }), options)),
       el('div', { class: 'grille-champs' },
-        champSaisie('s-date', 'Date', { type: 'date', value: v.date }),
-        champSaisie('s-duree', 'Durée (h)', { type: 'text', autocomplete: 'off', placeholder: '0,25', value: v.duree })),
+        el('div', { class: 'champ' },
+          el('label', { for: 's-phase', texte: 'Phase' }),
+          el('select', { id: 's-phase', name: 's-phase' },
+            vue.phases.map((p) => el('option', { value: p.cle, selected: p.cle === (v.phase || 'dev'), texte: p.nom })))),
+        champSaisie('s-date', 'Date', { type: 'date', value: v.date })),
+      champSaisie('s-duree', 'Durée (h)', { type: 'text', autocomplete: 'off', placeholder: '0,25', value: v.duree }),
       el('p', { class: 'discret petit', texte: 'En heures : 0,25 = 15 min, 1,5 ou 1h30 = 1 h 30, -0,5 retire 30 min. Sans heure de début, le temps se place après le dernier de la journée.' }),
       el('div', { class: 'grille-champs' },
         champSaisie('s-debut', 'Début (facultatif)', { type: 'time', value: v.debut }),

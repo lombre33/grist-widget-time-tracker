@@ -1,6 +1,8 @@
 // Tables du document de gestion client que le widget lit, et colonnes qu'il ajoute à Time_tracking.
 // Le widget ne crée qu'une table (Time_tracking, si elle manque) et n'ajoute que des colonnes : rien n'est modifié ni supprimé.
 
+import { PHASES } from './phases.js';
+
 const TZ = 'Europe/Paris';
 
 export const TABLE_TEMPS = 'Time_tracking';
@@ -9,13 +11,15 @@ export const TABLE_TEMPS = 'Time_tracking';
 export const SOURCES = {
   CLIENTS: ['Nom'],
   MISSIONS: ['numero', 'Client'],
-  DEVIS: ['Mission', 'prestations', 'Lots'],
-  Table1: ['Missions', 'heures'],
+  // Vendu : Heures_retenues (dev initial) ; les autres phases au pourcentage de leur colonne en euros sur Prix.
+  DEVIS: ['Mission', 'prestations', 'Lots', 'Heures_retenues', 'Prix', 'retour_user', 'retour_finaux', 'Imprevu_buffer'],
+  Table1: ['Missions'],
 };
 
 /** Colonnes de Time_tracking (ajoutées si elles manquent ; A, B, C et toute autre colonne restent telles quelles). */
 export const COLONNES_TEMPS = [
   { id: 'Devis', type: 'Ref:DEVIS' },
+  { id: 'Phase', type: 'Choice', choix: PHASES.map((p) => p.nom) },
   // Rappels en formule, pour les résumés de Grist par mission ou par prestation.
   { id: 'Mission', type: 'Ref:MISSIONS', formula: '$Devis.Mission' },
   { id: 'Prestation', type: 'Ref:Table1', formula: '$Devis.prestations' },
@@ -54,8 +58,9 @@ export function planifier(existant) {
 export const planVide = (plan) => !plan.table && plan.colonnes.length === 0;
 
 function infoColonne(col) {
-  return col.formula
-    ? { type: col.type, isFormula: true, formula: col.formula }
+  if (col.formula) return { type: col.type, isFormula: true, formula: col.formula };
+  return col.choix
+    ? { type: col.type, isFormula: false, widgetOptions: JSON.stringify({ choices: col.choix }) }
     : { type: col.type, isFormula: false };
 }
 

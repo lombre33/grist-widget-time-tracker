@@ -2,6 +2,7 @@
 
 import { MIN_PAR_JOUR, hms, hm, jours, nbJours, ecart } from './format.js';
 import { segmentOuvert } from './session.js';
+import { PHASES, PHASE_DEFAUT, nomPhase, parPhase } from './phases.js';
 
 /** Données en colonnes de Grist ({id: [...], Nom: [...]}) -> tableau d'objets. */
 export function enLignes(colonnes) {
@@ -35,13 +36,24 @@ export function libelleLot(lot) {
   return contexte ? `${lot.Nom || 'Sans nom'} · ${contexte}` : lot.Nom || 'Sans nom';
 }
 
-function etatLot(lot, ouvert, maintenant, minParJour) {
-  const vivant = ouvert && ouvert.Lot === lot.id ? (maintenant - ouvert.Debut) / 60 : 0;
-  const reel = Math.max(0, (Number(lot.Reel_min) || 0) + vivant); // les corrections ne font pas passer sous zéro
-  const vendu = (Number(lot.Jours_vendus) || 0) * minParJour;
+/** Valeurs par phase d'une prestation ; une prestation sans détail par phase compte tout en dev initial. */
+const phasesDe = (lot, detail, total) => parPhase((p) => Number(lot[detail]?.[p.cle] ?? (p.cle === PHASE_DEFAUT ? lot[total] : 0)) || 0);
+
+/**
+ * Vendu vs réel d'une prestation sur les phases `cles` (toutes, ou une seule). La barre est découpée par phase,
+ * à l'échelle du plus grand du vendu et du réel ; en dépassement, un repère marque le vendu.
+ */
+function etatLot(lot, ouvert, maintenant, minParJour, cles) {
+  const reels = phasesDe(lot, 'Reel_phases', 'Reel_min');
+  if (ouvert && ouvert.Lot === lot.id) reels[ouvert.Phase || PHASE_DEFAUT] += (maintenant - ouvert.Debut) / 60;
+  const vendus = phasesDe(lot, 'Vendu_phases', 'Jours_vendus');
+  // Les corrections ne font passer sous zéro ni une phase ni le total.
+  const reel = cles.reduce((t, k) => t + Math.max(0, reels[k]), 0);
+  const venduJ = cles.reduce((t, k) => t + vendus[k], 0);
+  const vendu = venduJ * minParJour;
   const ratio = vendu > 0 ? reel / vendu : (reel > 0 ? Infinity : 0);
   const depasse = ratio > 1;
-  const base = depasse ? (vendu / reel) * 100 : ratio * 100;
+  const echelle = Math.max(vendu, reel) || 1;
   let statut = 'Aucun jour vendu';
   if (vendu > 0) {
     if (depasse) statut = `Dépassement de ${ecart(reel - vendu, minParJour)}`;
@@ -51,12 +63,17 @@ function etatLot(lot, ouvert, maintenant, minParJour) {
   let etat = 'ok';
   if (depasse) etat = 'depasse';
   else if (ratio > 0.85) etat = 'attention';
+  const detail = cles.length > 1 && PHASES.filter((p) => reels[p.cle] > 0).length > 1
+    ? PHASES.filter((p) => reels[p.cle] > 0).map((p) => ` · ${p.nom} ${hm(reels[p.cle])}`).join('')
+    : '';
   return {
     reelMin: reel,
-    infoTxt: `Réel ${hm(reel)} sur ${hm(vendu)} vendues${vendu > 0 ? ` (${Math.round(ratio * 100)} %)` : ''}`,
+    venduJ,
+    venduTxt: `${nbJours(venduJ)} vendus`,
+    infoTxt: `Réel ${hm(reel)} sur ${hm(vendu)} vendues${vendu > 0 ? ` (${Math.round(ratio * 100)} %)` : ''}${detail}`,
     reelTxt: jours(reel, minParJour),
-    base: Math.round(base * 10) / 10,
-    depasse: depasse ? Math.round((100 - base) * 10) / 10 : 0,
+    parts: parPhase((p) => (cles.includes(p.cle) ? Math.round((Math.max(0, reels[p.cle]) / echelle) * 1000) / 10 : 0)),
+    repere: depasse ? Math.round((vendu / echelle) * 1000) / 10 : 100,
     statut,
     etat,
   };
@@ -74,7 +91,7 @@ function segmentsDeSession(temps, ouvert, parId, maintenant) {
   return lignes.map((r, i) => ({
     num: i + 1,
     libelle: libelleLot(parId.get(r.Lot)),
-    note: r.Note || (r.Fin ? 'Sans note' : 'En cours'),
+    note: `${nomPhase(r.Phase)} · ${r.Note || (r.Fin ? 'Sans note' : 'En cours')}`,
     duree: estCorrection(r) ? `−${hms(r.Debut - r.Fin)}` : hms(fin(r, maintenant) - r.Debut),
     a: r.Fin ? `à ${hms(r.Fin - depart)}` : 'maintenant',
     ouvert: !r.Fin,
@@ -103,7 +120,7 @@ export function entreesDuJour(temps, parId, maintenant, jour = minuit(maintenant
     .map((r) => ({
       id: r.id,
       libelle: libelleLot(parId.get(r.Lot)),
-      note: r.Note || (r.Fin ? 'Sans note' : 'En cours'),
+      note: `${nomPhase(r.Phase)} · ${r.Note || (r.Fin ? 'Sans note' : 'En cours')}`,
       plage: estCorrection(r) ? `Correction, ${heureTxt(r.Debut)}` : `${heureTxt(r.Debut)} – ${r.Fin ? heureTxt(r.Fin) : 'en cours'}`,
       duree: estCorrection(r) ? `−${hm((r.Debut - r.Fin) / 60)}` : hm(minutesEntre(r, jour, lendemain, maintenant)),
       correction: estCorrection(r),
@@ -119,9 +136,13 @@ function minutesEntre(r, de, a, maintenant) {
  * @param {number} maintenant  secondes
  * @param {number|string|null} choix  lot choisi quand le chrono est arrêté
  * @param {number|null} jourVu  minuit du jour dont on liste les temps (aujourd'hui par défaut)
- * @param {{ mission?: number|null, minParJour?: number }} options  mission affichée (sinon celle de la prestation courante)
+ * @param {{ mission?: number|null, phase?: string, vuePhase?: string, minParJour?: number }} options  mission affichée
+ *   (sinon celle de la prestation courante), phase choisie pour le chrono, phase suivie à droite ('tout' ou une clé)
  */
-export function construireVue(donnees, maintenant, choix, jourVu = null, { mission = null, minParJour = MIN_PAR_JOUR } = {}) {
+export function construireVue(donnees, maintenant, choix, jourVu = null, options = {}) {
+  const { mission = null, phase = PHASE_DEFAUT, vuePhase = 'tout', minParJour = MIN_PAR_JOUR } = options;
+  const suivie = PHASES.some((p) => p.cle === vuePhase) ? vuePhase : 'tout';
+  const cles = suivie === 'tout' ? PHASES.map((p) => p.cle) : [suivie];
   const { lots, temps } = donnees;
   const parId = new Map(lots.map((l) => [l.id, l]));
   const ouvert = segmentOuvert(temps);
@@ -129,19 +150,23 @@ export function construireVue(donnees, maintenant, choix, jourVu = null, { missi
   const lotCourant = ouvert ? ouvert.Lot : (parId.has(choix) ? choix : actifs[0]?.id ?? null);
   const session = ouvert ? temps.filter((r) => r.Session === ouvert.Session) : [];
   const depart = session.reduce((m, r) => Math.min(m, r.Debut), ouvert ? ouvert.Debut : 0);
+  const phaseCourante = ouvert ? ouvert.Phase || PHASE_DEFAUT : phase;
   return {
     enCours: Boolean(ouvert),
     ouvert,
     lotCourant,
-    libelleCourant: lotCourant ? libelleLot(parId.get(lotCourant)) : 'Aucune prestation',
+    phaseCourante,
+    phases: PHASES.map((p) => ({ cle: p.cle, nom: p.nom, choisie: p.cle === phaseCourante })),
+    vuePhase: suivie,
+    vuesPhase: [{ cle: 'tout', nom: 'Tout' }, ...PHASES].map((p) => ({ cle: p.cle, nom: p.nom, choisie: p.cle === suivie })),
+    libelleCourant: lotCourant ? `${libelleLot(parId.get(lotCourant))} · ${nomPhase(phaseCourante)}` : 'Aucune prestation',
     horloge: ouvert ? hms(maintenant - depart) : hms(0),
     ...parMission(actifs, parId.get(lotCourant), mission, (l) => ({
       id: l.id,
       nom: l.Nom || 'Sans nom',
       lotTxt: l.Lot_txt || '',
-      venduTxt: `${nbJours(l.Jours_vendus)} vendus`,
       choisi: l.id === lotCourant,
-      ...etatLot(l, ouvert, maintenant, minParJour),
+      ...etatLot(l, ouvert, maintenant, minParJour, cles),
     }), minParJour),
     segments: segmentsDeSession(temps, ouvert, parId, maintenant),
     jour: vueJour(temps, maintenant, minParJour),
@@ -168,7 +193,7 @@ function parMission(actifs, courant, mission, versLot, minParJour) {
   const lots = actifs.filter((l) => l.Mission === vue).map(versLot);
   const titres = [...new Set(lots.map((l) => l.lotTxt))];
   const reel = lots.reduce((t, l) => t + l.reelMin, 0);
-  const vendu = actifs.filter((l) => l.Mission === vue).reduce((t, l) => t + (Number(l.Jours_vendus) || 0), 0);
+  const vendu = lots.reduce((t, l) => t + l.venduJ, 0);
   return {
     missions: missions.map((m) => ({ ...m, choisie: m.id === vue })),
     missionVue: vue,

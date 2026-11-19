@@ -3,6 +3,7 @@
 
 import { TABLE_TEMPS } from './schema.js';
 import { champsDuLot } from './modele.js';
+import { PHASE_DEFAUT, nomPhase } from './phases.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -68,15 +69,15 @@ export function accorder({ date, debut, fin, duree }, source) {
 }
 
 /** Valeurs du formulaire pour une ligne existante (ou un nouveau temps le jour `jour`). */
-export function valeursInitiales(ligne, jour, lotParDefaut) {
+export function valeursInitiales(ligne, jour, lotParDefaut, phaseParDefaut = PHASE_DEFAUT) {
   if (ligne) {
     const debut = versChamps(ligne.Debut);
     return {
-      id: ligne.id, lot: ligne.Lot, date: debut.date, debut: debut.heure, fin: ligne.Fin > ligne.Debut ? versChamps(ligne.Fin).heure : '',
+      id: ligne.id, lot: ligne.Lot, phase: ligne.Phase || PHASE_DEFAUT, date: debut.date, debut: debut.heure, fin: ligne.Fin > ligne.Debut ? versChamps(ligne.Fin).heure : '',
       duree: ligne.Fin ? ecrireDuree((ligne.Fin - ligne.Debut) / 60) : '', note: ligne.Note || '',
     };
   }
-  return { id: null, lot: lotParDefaut || '', date: versChamps(jour).date, debut: '', fin: '', duree: '', note: '' };
+  return { id: null, lot: lotParDefaut || '', phase: phaseParDefaut, date: versChamps(jour).date, debut: '', fin: '', duree: '', note: '' };
 }
 
 /**
@@ -110,7 +111,7 @@ export function actionsSaisie(v, { temps, ligne = null }) {
 }
 
 function enregistrer(v, ligne, debut, fin) {
-  const champs = { ...champsDuLot(v.lot), Debut: debut, Fin: fin, Note: (v.note || '').trim() };
+  const champs = { ...champsDuLot(v.lot), Phase: nomPhase(v.phase || PHASE_DEFAUT), Debut: debut, Fin: fin, Note: (v.note || '').trim() };
   if (ligne) return { actions: [['UpdateRecord', TABLE_TEMPS, ligne.id, champs]] };
   return { actions: [['AddRecord', TABLE_TEMPS, null, { ...champs, Session: Math.floor(debut) }]] };
 }

@@ -45,6 +45,10 @@ export function rafraichirVivant(racine, vue) {
     const v = valeurChemin(vue, n.dataset.liveW);
     if (v !== undefined) n.style.width = `${v}%`;
   });
+  racine.querySelectorAll('[data-live-left]').forEach((n) => {
+    const v = valeurChemin(vue, n.dataset.liveLeft);
+    if (v !== undefined) n.style.left = `${v}%`;
+  });
   racine.querySelectorAll('[data-live-etat]').forEach((n) => {
     const v = valeurChemin(vue, n.dataset.liveEtat);
     if (v !== undefined) n.dataset.etat = v;

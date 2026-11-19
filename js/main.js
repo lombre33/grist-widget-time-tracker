@@ -16,6 +16,8 @@ const etat = {
   plan: null,
   choix: null,
   mission: null, // mission affichée ; null = celle de la prestation courante
+  phase: 'dev', // phase choisie pour le prochain chrono
+  vuePhase: 'tout', // phase suivie dans « Vendu vs réel »
   occupe: false,
   erreurInstallation: null,
   jourVu: null, // minuit du jour listé dans « Entrées » ; null = aujourd'hui
@@ -23,7 +25,9 @@ const etat = {
 };
 
 const maintenant = () => Date.now() / 1000;
-const vue = () => construireVue(etat.donnees, maintenant(), etat.choix, etat.jourVu, { mission: etat.mission });
+const vue = () => construireVue(etat.donnees, maintenant(), etat.choix, etat.jourVu, {
+  mission: etat.mission, phase: etat.phase, vuePhase: etat.vuePhase,
+});
 
 function signaler(texte) {
   alerte.textContent = texte;
@@ -99,11 +103,20 @@ function surLot(id) {
   return null;
 }
 
+/** Choisir une phase pendant le chrono ferme le segment et en ouvre un autre : c'est un milestone, comme la prestation. */
+function surPhase(cle) {
+  const ouvert = segmentOuvert(etat.donnees.temps);
+  etat.phase = cle;
+  if (ouvert) return agir(changer(ouvert, ouvert.Lot, maintenant(), cle));
+  dessiner();
+  return null;
+}
+
 function basculer() {
   const ouvert = segmentOuvert(etat.donnees.temps);
   if (ouvert) return agir(arreter(ouvert, maintenant()));
   const lot = vue().lotCourant;
-  return lot ? agir(demarrer(lot, maintenant())) : null;
+  return lot ? agir(demarrer(lot, maintenant(), vue().phaseCourante)) : null;
 }
 
 async function installer() {
@@ -122,7 +135,7 @@ const ligneTemps = (id) => etat.donnees.temps.find((r) => r.id === Number(id)) |
 
 function ouvrirSaisie(id) {
   const ligne = id ? ligneTemps(id) : null;
-  etat.saisie = { valeurs: valeursInitiales(ligne, etat.jourVu ?? minuit(maintenant()), vue().lotCourant), erreur: null, confirmer: false };
+  etat.saisie = { valeurs: valeursInitiales(ligne, etat.jourVu ?? minuit(maintenant()), vue().lotCourant, vue().phaseCourante), erreur: null, confirmer: false };
   dessiner();
 }
 
@@ -133,7 +146,7 @@ function fermerSaisie() {
 
 function lireSaisie(form) {
   const val = (n) => form.querySelector(`[name="${n}"]`).value;
-  return { id: etat.saisie.valeurs.id, lot: val('s-lot'), date: val('s-date'), debut: val('s-debut'), fin: val('s-fin'), duree: val('s-duree'),
+  return { id: etat.saisie.valeurs.id, lot: val('s-lot'), phase: val('s-phase'), date: val('s-date'), debut: val('s-debut'), fin: val('s-fin'), duree: val('s-duree'),
     note: val('s-note') };
 }
 
@@ -170,6 +183,8 @@ function changerJour(sens) {
 
 const GESTES = {
   lot: (c) => surLot(Number(c.dataset.lot)),
+  phase: (c) => surPhase(c.dataset.phase),
+  'vue-phase': (c) => { etat.vuePhase = c.dataset.phase; dessiner(); },
   basculer: () => basculer(),
   installer: () => installer(),
   'jour-prec': () => changerJour(-1),

@@ -1,6 +1,9 @@
 // Passe des tables de gestion client (CLIENTS, MISSIONS, DEVIS, Table1, Time_tracking) aux prestations que le chrono
-// affiche. Une prestation suivie = une ligne de DEVIS (une mission + une prestation de Table1) ; son vendu = les heures
-// de la prestation. Dans les lignes du chrono, `Lot` porte l'identifiant de cette ligne de devis. Fonctions pures.
+// affiche. Une prestation suivie = une ligne de DEVIS (une mission + une prestation de Table1) ; son vendu, par phase,
+// vient de DEVIS (voir phases.js). Dans les lignes du chrono, `Lot` porte l'identifiant de cette ligne de devis et
+// `Phase` la clé de sa phase. Fonctions pures.
+
+import { heuresParPhase, parPhase, phaseDe } from './phases.js';
 
 /** Champs à écrire dans Time_tracking pour une prestation (identifiant de ligne de DEVIS). */
 export const champsDuLot = (id) => ({ Devis: Number(id) });
@@ -11,11 +14,13 @@ export function texteChoix(v) {
   return v == null ? '' : String(v);
 }
 
-/** Lignes de Time_tracking -> lignes du chrono ({ Lot: id de la ligne de devis, ... }). Les lignes sans devis sont ignorées. */
+/** Lignes de Time_tracking -> lignes du chrono ({ Lot: id de la ligne de devis, Phase: clé, ... }). Sans devis : ignorées. */
 export function tempsDuChrono(lignes) {
   return lignes
     .filter((r) => r.Devis)
-    .map((r) => ({ id: r.id, Lot: r.Devis, Debut: r.Debut, Fin: r.Fin, Note: r.Note, Session: r.Session, Duree_min: r.Duree_min }));
+    .map((r) => ({
+      id: r.id, Lot: r.Devis, Phase: phaseDe(r.Phase), Debut: r.Debut, Fin: r.Fin, Note: r.Note, Session: r.Session, Duree_min: r.Duree_min,
+    }));
 }
 
 /**
@@ -28,24 +33,30 @@ export function construireModele({ clients = [], missions, devis, prestations, t
   const parPrestation = new Map(prestations.map((p) => [p.id, p]));
   const tps = tempsDuChrono(temps);
   const reel = new Map();
-  for (const r of tps) reel.set(r.Lot, (reel.get(r.Lot) || 0) + (Number(r.Duree_min) || 0));
+  for (const r of tps) {
+    if (!reel.has(r.Lot)) reel.set(r.Lot, parPhase(() => 0));
+    reel.get(r.Lot)[r.Phase] += Number(r.Duree_min) || 0;
+  }
   return {
     lots: devis
       .filter((d) => d.Mission)
       .map((d) => {
         const m = parMission.get(d.Mission);
-        const p = parPrestation.get(d.prestations);
         const lot = texteChoix(d.Lots);
+        const vendus = parPhase((p) => heuresParPhase(d)[p.cle] / 7);
+        const reels = reel.get(d.id) || parPhase(() => 0);
         return {
           id: d.id,
-          Nom: p?.Missions || `Prestation ${d.id}`,
+          Nom: parPrestation.get(d.prestations)?.Missions || `Prestation ${d.id}`,
           Projet_nom: [m?.numero || `Mission ${d.Mission}`, lot].filter(Boolean).join(' · '),
           Mission: d.Mission,
           Mission_nom: m?.numero || `Mission ${d.Mission}`,
           Lot_txt: lot,
           Client_nom: parClient.get(m?.Client)?.Nom || '',
-          Jours_vendus: (Number(p?.heures) || 0) / 7,
-          Reel_min: reel.get(d.id) || 0,
+          Vendu_phases: vendus,
+          Jours_vendus: Object.values(vendus).reduce((a, b) => a + b, 0),
+          Reel_phases: reels,
+          Reel_min: Object.values(reels).reduce((a, b) => a + b, 0),
           date: m?.date || 0,
           numero: m?.numero || '',
         };

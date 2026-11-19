@@ -8,7 +8,9 @@ Widget personnalisé pour [Grist](https://www.getgrist.com/), sans framework ni 
 - **Chrono en direct** sur une prestation. Changer de prestation pendant le chrono ferme le segment et en ouvre un autre :
   c'est le milestone, avec son temps intermédiaire.
 - **Note** optionnelle sur le segment en cours.
-- **Vendu vs réel** par prestation, en jours de 7 h, avec alerte à 85 % et dépassement en orange.
+- **Phases** : Dev initial, Retour user, Retours finaux, Imprévu. On choisit la phase au-dessus de la mission ;
+  en changer pendant le chrono est un milestone, comme changer de prestation.
+- **Vendu vs réel** par prestation, toutes phases (barres découpées par phase) ou pour une seule phase, en jours de 7 h, avec alerte à 85 % et dépassement en orange.
 - **Journée** : temps du jour sur 7 h, série de jours d'affilée.
 - **Entrées** jour par jour, avec **saisie et correction à la main** (oubli de lancer ou d'arrêter le chrono) :
   ajouter, modifier, supprimer (avec confirmation). Une durée seule suffit (0,25 = 15 min, ou 1h30) : le temps se
@@ -28,11 +30,11 @@ Le widget lit les tables du document de gestion client et n'y change rien :
 | --- | --- | --- |
 | `CLIENTS` | `Nom` | nom du client affiché sur chaque prestation |
 | `MISSIONS` | `numero`, `Client` (`date` pour l'ordre) | la mission d'une prestation |
-| `DEVIS` | `Mission`, `prestations`, `Lots` | une prestation suivie = une ligne de devis (`Lots` s'affiche en contexte) |
-| `Table1` | `Missions`, `heures` | nom de la prestation et vendu (heures, 7 h = 1 j) |
+| `DEVIS` | `Mission`, `prestations`, `Lots`, `Heures_retenues`, `Prix`, `retour_user`, `retour_finaux`, `Imprevu_buffer` | une prestation suivie = une ligne de devis ; vendu par phase : `Heures_retenues` pour le dev initial, et pour les autres phases la part de leur colonne en euros dans `Prix` (20 %, 10 %, 10 % aujourd'hui) |
+| `Table1` | `Missions` | nom de la prestation |
 
 Il écrit seulement dans `Time_tracking` : au premier lancement, il y ajoute (avec ton accord) les colonnes
-`Devis` (la ligne de devis), `Debut`, `Fin`, `Note`, `Session`, et les formules `Duree_min`,
+`Devis` (la ligne de devis), `Phase` (Dev initial, Retour user, Retours finaux, Imprévu), `Debut`, `Fin`, `Note`, `Session`, et les formules `Duree_min`,
 `Mission` et `Prestation` (pour tes résumés Grist par mission ou par prestation). Les colonnes déjà là (`A`, `B`, `C`…)
 restent. Si `Time_tracking` n'existe pas, il la crée.
 

@@ -22,7 +22,9 @@ await f().evaluate(async () => {
     ['RenameTable', 'Clients', 'CLIENTS'],
     ['AddTable', 'MISSIONS', [col('numero', 'Text'), col('date', 'DateTime:Europe/Paris'), col('Client', 'Ref:CLIENTS')]],
     ['AddTable', 'Table1', [col('Missions_EN', 'Text'), col('Missions', 'Text'), col('heures', 'Numeric')]],
-    ['AddTable', 'DEVIS', [col('Mission', 'Ref:MISSIONS'), col('prestations', 'Ref:Table1'), col('Lots', 'Choice')]],
+    ['AddTable', 'DEVIS', [col('Mission', 'Ref:MISSIONS'), col('prestations', 'Ref:Table1'), col('Lots', 'Choice'), col('heure_reelle', 'Numeric'),
+      col('Heures_retenues', 'Numeric', 'rec.heure_reelle or rec.prestations.heures'), col('Prix', 'Numeric', '$Heures_retenues * 100'),
+      col('retour_user', 'Numeric', '$Prix * .2'), col('retour_finaux', 'Numeric', '$Prix * .1'), col('Imprevu_buffer', 'Numeric', '$Prix * .1')]],
     ['AddTable', 'Time_tracking', [col('A', 'Any', 'None'), col('B', 'Any', 'None'), col('C', 'Any', 'None')]],
   ]);
   const clients = await grist.docApi.fetchTable('CLIENTS');
@@ -40,10 +42,15 @@ await lab.shotPanel('tt', '1-preparation', f());
 await f().getByRole('button', { name: 'Préparer Time_tracking' }).click();
 await f().locator('.puce').first().waitFor({ timeout: 20000 });
 const cols = await f().evaluate(async () => Object.keys(await grist.docApi.fetchTable('Time_tracking')));
-check('Time_tracking garde A, B, C et reçoit ses colonnes', ['A', 'B', 'C', 'Devis', 'Mission', 'Prestation', 'Debut', 'Fin', 'Note', 'Session', 'Duree_min'].every((c) => cols.includes(c)), cols);
+check('Time_tracking garde A, B, C et reçoit ses colonnes', ['A', 'B', 'C', 'Devis', 'Phase', 'Mission', 'Prestation', 'Debut', 'Fin', 'Note', 'Session', 'Duree_min'].every((c) => cols.includes(c)), cols);
 check('une prestation par ligne de devis', (await f().locator('.puce').count()) === 2, await f().locator('.puce').count());
 const cadrage = await f().locator('.lot', { hasText: 'Ateliers' }).innerText();
-check('le vendu vient des heures de la prestation (14 h = 2 j)', /2 j vendus/.test(cadrage), cadrage);
+check('toutes phases : 14 h × 1,4 = 2,8 j, lu dans les formules de DEVIS', /2,8 j vendus/.test(cadrage), cadrage);
+const choix = await f().evaluate(async () => {
+  const c = await grist.docApi.fetchTable('_grist_Tables_column');
+  return c.widgetOptions[c.colId.indexOf('Phase')];
+});
+check('la colonne Phase est un choix avec les quatre phases', /Dev initial.*Retour user.*Retours finaux.*Imprévu/.test(choix), choix);
 
 // ----- Le chrono.
 await f().locator('.puce', { hasText: 'Ateliers' }).click();
@@ -53,11 +60,14 @@ await f().locator('#note').fill('Atelier de cadrage');
 await f().locator('#note').press('Tab');
 await page.waitForTimeout(3000);
 await f().locator('.puce', { hasText: 'Écrans' }).click();
-await page.waitForTimeout(6000);
+await page.waitForTimeout(3000);
+await f().getByRole('group', { name: 'Phase', exact: true }).getByRole('button', { name: 'Retour user' }).click();
+await page.waitForTimeout(3000);
 await lab.shotPanel('tt', '2-en-cours', f());
 const pendant = await f().evaluate(async () => grist.docApi.fetchTable('Time_tracking'));
-check('deux segments, ligne de devis écrite, mission et prestation par formule, le premier fermé avec sa note', pendant.id.length === 2
-  && pendant.Devis.join() === '1,2' && pendant.Mission.every((m) => m === 1) && pendant.Prestation.join() === '1,2' && pendant.Fin[0] && !pendant.Fin[1] && pendant.Note[0] === 'Atelier de cadrage', pendant);
+check('trois segments (prestation puis phase), devis et phase écrits, mission et prestation par formule', pendant.id.length === 3
+  && pendant.Devis.join() === '1,2,2' && pendant.Phase.join() === 'Dev initial,Dev initial,Retour user'
+  && pendant.Mission.every((m) => m === 1) && pendant.Prestation.join() === '1,2,2' && pendant.Fin[0] && pendant.Fin[1] && !pendant.Fin[2] && pendant.Note[0] === 'Atelier de cadrage', pendant);
 check('la formule Duree_min de Grist calcule le premier segment', pendant.Duree_min[0] > 0, pendant.Duree_min);
 await f().evaluate(() => location.reload());
 await page.waitForTimeout(4000);
