@@ -16,6 +16,7 @@ const etat = {
   plan: null,
   choix: null,
   mission: null, // mission affichée ; null = celle de la prestation courante
+  client: null, // client choisi (son nom) ; sa première mission s'affiche
   phase: 'dev', // phase choisie pour le prochain chrono
   vuePhase: 'tout', // phase suivie dans « Vendu vs réel »
   occupe: false,
@@ -26,7 +27,7 @@ const etat = {
 
 const maintenant = () => Date.now() / 1000;
 const vue = () => construireVue(etat.donnees, maintenant(), etat.choix, etat.jourVu, {
-  mission: etat.mission, phase: etat.phase, vuePhase: etat.vuePhase,
+  mission: etat.mission, client: etat.client, phase: etat.phase, vuePhase: etat.vuePhase,
 });
 
 function signaler(texte) {
@@ -226,6 +227,12 @@ racine.addEventListener('input', (ev) => {
 });
 
 racine.addEventListener('change', (ev) => {
+  if (ev.target.id === 'client') {
+    etat.client = ev.target.value;
+    etat.mission = null;
+    dessiner();
+    return;
+  }
   if (ev.target.id === 'mission') {
     etat.mission = Number(ev.target.value);
     dessiner();

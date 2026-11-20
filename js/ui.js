@@ -41,9 +41,11 @@ function segmente(items, action, etiquette) {
 
 /** Choix de la mission affichée, ou son nom quand il n'y en a qu'une. */
 function choixMission(vue) {
-  if (vue.missions.length < 2) return el('span', { class: 'discret petit', texte: vue.missionTxt });
-  return el('select', { id: 'mission', class: 'choix-mission', 'aria-label': 'Mission' },
-    vue.missions.map((m) => el('option', { value: m.id, selected: m.choisie, texte: m.libelle })));
+  const liste = (id, etiquette, items) => (items.length < 2
+    ? el('span', { class: 'choix-seul', texte: items[0]?.libelle || '' })
+    : el('select', { id, class: 'choix-mission', 'aria-label': etiquette },
+      items.map((m) => el('option', { value: m.id, selected: m.choisie || m.choisi, texte: m.libelle }))));
+  return el('div', { class: 'choix-client' }, liste('client', 'Client', vue.clients), liste('mission', 'Mission', vue.missions));
 }
 
 function segments(vue) {
@@ -68,7 +70,7 @@ function minuteur(vue) {
     // La phase d'abord, puis la mission et ses prestations (demandé dans cet ordre).
     segmente(vue.phases, 'phase', 'Phase'),
     choixMission(vue),
-    vue.lots.length ? puces(vue) : el('p', { class: 'vide', texte: 'Aucune prestation : ajoute une ligne de devis avec sa mission et sa prestation (table DEVIS).' }),
+    vue.lots.length ? puces(vue) : el('p', { class: 'vide', texte: 'Aucune prestation pour cette mission : ajoute ses lignes de devis (table DEVIS).' }),
     el('div', { class: 'chrono' },
       el('div', { class: 'courant' },
         vue.enCours ? el('span', { class: 'point-vivant', 'aria-hidden': 'true' }) : null,

@@ -30,6 +30,7 @@ await f().evaluate(async () => {
   const clients = await grist.docApi.fetchTable('CLIENTS');
   await grist.docApi.applyUserActions([
     ['AddRecord', 'MISSIONS', null, { numero: 'M-2026-01', date: 1790000000, Client: clients.id[0] }],
+    ['AddRecord', 'MISSIONS', null, { numero: 'N-01', date: 1780000000, Client: clients.id[1] }],
     ['AddRecord', 'Table1', null, { Missions: 'Ateliers', heures: 14 }],
     ['AddRecord', 'Table1', null, { Missions: 'Écrans', heures: 0.0005 }],
     ['AddRecord', 'DEVIS', null, { Mission: 1, prestations: 1, Lots: 'Cadrage' }],
@@ -51,6 +52,14 @@ const choix = await f().evaluate(async () => {
   return c.widgetOptions[c.colId.indexOf('Phase')];
 });
 check('la colonne Phase est un choix avec les quatre phases', /Dev initial.*Retour user.*Retours finaux.*Imprévu/.test(choix), choix);
+
+const clientsTxt = await f().evaluate(async () => (await grist.docApi.fetchTable('CLIENTS')).Nom);
+await f().locator('#client').selectOption({ label: clientsTxt[1] });
+await page.waitForTimeout(500);
+check('changer de client montre sa mission, même sans devis', /Aucune prestation pour cette mission/.test(await f().locator('.minuteur').innerText())
+  && (await f().locator('.choix-seul').innerText()) === 'N-01');
+await f().locator('#client').selectOption({ label: clientsTxt[0] });
+await page.waitForTimeout(500);
 
 // ----- Le chrono.
 await f().locator('.puce', { hasText: 'Ateliers' }).click();

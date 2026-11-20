@@ -25,7 +25,7 @@ export function tempsDuChrono(lignes) {
 
 /**
  * @param {{ clients?: object[], missions: object[], devis: object[], prestations: object[], temps: object[] }} sources  lignes Grist
- * @returns {{ lots: object[], temps: object[] }}  ce qu'attend construireVue
+ * @returns {{ lots: object[], missions: object[], temps: object[] }}  ce qu'attend construireVue
  */
 export function construireModele({ clients = [], missions, devis, prestations, temps }) {
   const parMission = new Map(missions.map((m) => [m.id, m]));
@@ -64,6 +64,11 @@ export function construireModele({ clients = [], missions, devis, prestations, t
       // Mission la plus récente d'abord ; dans une mission, l'ordre des lignes du devis (le tri de JavaScript est stable).
       .sort((a, b) => b.date - a.date || a.numero.localeCompare(b.numero, 'fr'))
       .map(({ date, numero, ...l }) => l),
+    // Toutes les missions, même sans ligne de devis, pour pouvoir choisir n'importe quel client.
+    missions: missions
+      .map((m) => ({ id: m.id, Nom: m.numero || `Mission ${m.id}`, Client: m.Client || 0, Client_nom: parClient.get(m.Client)?.Nom || '', date: m.date || 0 }))
+      .sort((a, b) => b.date - a.date || a.Nom.localeCompare(b.Nom, 'fr'))
+      .map(({ date, ...m }) => m),
     temps: tps,
   };
 }

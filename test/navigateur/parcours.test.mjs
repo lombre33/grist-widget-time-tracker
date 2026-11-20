@@ -58,9 +58,14 @@ async function parcours(nav, s) {
   await page.getByRole('group', { name: 'Phase suivie' }).getByRole('button', { name: 'Tout' }).click();
   assert.equal(cols.Time_tracking.length, 0);
   assert.deepEqual(await page.locator('.minuteur .groupe-titre').allInnerTexts(), ['CADRAGE', 'MAQUETTES'], 'un titre par lot de la mission');
-  await page.getByLabel('Mission').selectOption({ label: 'Atelier Mira · M-2025-09' });
+  await page.getByLabel('Mission').selectOption({ label: 'M-2025-09' });
   assert.deepEqual(await page.locator('.puce').allInnerTexts(), ['Recette']);
-  await page.getByLabel('Mission').selectOption({ label: 'Atelier Mira · M-2026-01' });
+  // Un autre client, dont la mission n'a pas encore de devis.
+  await page.getByLabel('Client').selectOption({ label: 'Studio Nord' });
+  assert.equal(await page.locator('.choix-seul').innerText(), 'N-01');
+  assert.match(await page.locator('.minuteur .vide').first().innerText(), /Aucune prestation pour cette mission/);
+  await page.getByLabel('Client').selectOption({ label: 'Atelier Mira' });
+  assert.equal(await page.getByLabel('Mission').inputValue(), '1', 'la première mission du client qui a des prestations');
 
   await page.locator('.puce', { hasText: 'Ateliers' }).click();
   await page.getByRole('button', { name: 'Démarrer' }).click();

@@ -225,7 +225,8 @@ test('construireVue : une mission à la fois, prestations rangées par lot', () 
     { id: 3, Nom: 'C', Mission: 20, Mission_nom: 'M-2', Client_nom: '', Lot_txt: 'included', Jours_vendus: 2, Reel_min: 0 },
   ];
   let v = construireVue({ lots: L, temps: [] }, T, 3);
-  assert.deepEqual(v.missions.map((m) => [m.libelle, m.choisie]), [['Mira · M-1', false], ['M-2', true]], 'la mission de la prestation choisie');
+  assert.deepEqual(v.clients.map((c) => [c.libelle, c.choisi]), [['Mira', false], ['Sans client', true]], 'le client de la prestation choisie');
+  assert.deepEqual(v.missions.map((m) => [m.libelle, m.choisie]), [['M-2', true]]);
   assert.deepEqual(v.lots.map((l) => l.id), [3]);
   assert.deepEqual(v.groupes.map((g) => g.titre), [''], 'pas de titre quand la mission n’a qu’un lot');
   v = construireVue({ lots: L, temps: [] }, T, 3, null, { mission: 10 });
@@ -233,6 +234,19 @@ test('construireVue : une mission à la fois, prestations rangées par lot', () 
   assert.equal(v.missionTxt, 'Mira · M-1');
   assert.deepEqual(v.totalMission, { reelTxt: '0,5 j', venduTxt: '2 j vendus' });
   assert.equal(construireVue({ lots: L, temps: [] }, T, 3, null, { mission: 99 }).missionVue, 20, 'mission inconnue : retour à la courante');
+  // Toutes les missions du document comptent, même sans devis ; choisir un client montre sa première mission à prestations.
+  const missions = [
+    { id: 30, Nom: 'M-3', Client_nom: 'Rosedale' }, { id: 10, Nom: 'M-1', Client_nom: 'Mira' },
+    { id: 31, Nom: 'M-4', Client_nom: 'Rosedale' }, { id: 20, Nom: 'M-2', Client_nom: '' },
+  ];
+  const L2 = [...L, { id: 4, Nom: 'D', Mission: 31, Mission_nom: 'M-4', Client_nom: 'Rosedale', Jours_vendus: 1 }];
+  v = construireVue({ lots: L2, missions, temps: [] }, T, 1, null, { client: 'Rosedale' });
+  assert.deepEqual(v.clients.map((c) => c.libelle), ['Rosedale', 'Mira', 'Sans client']);
+  assert.deepEqual(v.missions.map((m) => [m.libelle, m.choisie]), [['M-3', false], ['M-4', true]]);
+  assert.deepEqual(v.lots.map((l) => l.id), [4]);
+  v = construireVue({ lots: L2, missions, temps: [] }, T, 1, null, { mission: 30 });
+  assert.equal(v.lots.length, 0, 'une mission sans devis se choisit, sans prestation');
+  assert.equal(v.missionTxt, 'Rosedale · M-3');
 });
 
 test('construireVue : chrono arrêté, lot choisi par défaut = premier actif', () => {

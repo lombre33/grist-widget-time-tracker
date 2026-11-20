@@ -3,8 +3,9 @@
 (() => {
   // Le document de gestion client tel qu'il est avant le widget (Time_tracking n'a que A, B, C).
   const tables = {
-    CLIENTS: [{ id: 1, Nom: 'Atelier Mira' }],
-    MISSIONS: [{ id: 1, numero: 'M-2026-01', date: 1790000000, Client: 1 }, { id: 2, numero: 'M-2025-09', date: 1760000000, Client: 1 }],
+    CLIENTS: [{ id: 1, Nom: 'Atelier Mira' }, { id: 2, Nom: 'Studio Nord' }],
+    MISSIONS: [{ id: 1, numero: 'M-2026-01', date: 1790000000, Client: 1 }, { id: 2, numero: 'M-2025-09', date: 1760000000, Client: 1 },
+      { id: 3, numero: 'N-01', date: 1780000000, Client: 2 }],
     Table1: [{ id: 1, Missions: 'Ateliers', heures: 14 }, { id: 2, Missions: 'Écrans', heures: 21 }, { id: 3, Missions: 'Recette', heures: 7 }],
     DEVIS: [
       { id: 1, Mission: 1, prestations: 1, Lots: 'Cadrage', Heures_retenues: 14, Prix: 1400, retour_user: 280, retour_finaux: 140, Imprevu_buffer: 140 },
@@ -16,7 +17,7 @@
     CLIENTS: ['Nom', 'Adresse', 'Siret'], MISSIONS: ['numero', 'date', 'Client'], Table1: ['Missions_EN', 'Missions', 'heures'],
     DEVIS: ['Mission', 'prestations', 'Lots', 'heure_reelle', 'Heures_retenues', 'Prix', 'retour_user', 'retour_finaux', 'Imprevu_buffer'], Time_tracking: ['A', 'B', 'C'],
   };
-  const suivant = { CLIENTS: 2, MISSIONS: 3, Table1: 4, DEVIS: 4, Time_tracking: 1 };
+  const suivant = { CLIENTS: 3, MISSIONS: 4, Table1: 4, DEVIS: 4, Time_tracking: 1 };
   const ecouteurs = [];
 
   function formules() {

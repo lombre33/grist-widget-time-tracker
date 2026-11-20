@@ -140,7 +140,7 @@ function minutesEntre(r, de, a, maintenant) {
  *   (sinon celle de la prestation courante), phase choisie pour le chrono, phase suivie à droite ('tout' ou une clé)
  */
 export function construireVue(donnees, maintenant, choix, jourVu = null, options = {}) {
-  const { mission = null, phase = PHASE_DEFAUT, vuePhase = 'tout', minParJour = MIN_PAR_JOUR } = options;
+  const { mission = null, client = null, phase = PHASE_DEFAUT, vuePhase = 'tout', minParJour = MIN_PAR_JOUR } = options;
   const suivie = PHASES.some((p) => p.cle === vuePhase) ? vuePhase : 'tout';
   const cles = suivie === 'tout' ? PHASES.map((p) => p.cle) : [suivie];
   const { lots, temps } = donnees;
@@ -161,7 +161,7 @@ export function construireVue(donnees, maintenant, choix, jourVu = null, options
     vuesPhase: [{ cle: 'tout', nom: 'Tout' }, ...PHASES].map((p) => ({ cle: p.cle, nom: p.nom, choisie: p.cle === suivie })),
     libelleCourant: lotCourant ? `${libelleLot(parId.get(lotCourant))} · ${nomPhase(phaseCourante)}` : 'Aucune prestation',
     horloge: ouvert ? hms(maintenant - depart) : hms(0),
-    ...parMission(actifs, parId.get(lotCourant), mission, (l) => ({
+    ...parMission(actifs, donnees.missions, parId.get(lotCourant), { mission, client }, (l) => ({
       id: l.id,
       nom: l.Nom || 'Sans nom',
       lotTxt: l.Lot_txt || '',
@@ -183,21 +183,32 @@ export function construireVue(donnees, maintenant, choix, jourVu = null, options
 const libelleMission = (l) => [l.Client_nom, l.Mission_nom].filter(Boolean).join(' · ');
 
 /**
- * Une mission à la fois : la liste des missions, et les prestations de celle qu'on regarde, rangées par lot
- * (les titres de lot n'apparaissent que si la mission en a plusieurs) avec le total de la mission.
+ * Un client puis une de ses missions, et les prestations de celle qu'on regarde, rangées par lot (les titres de lot
+ * n'apparaissent que si la mission en a plusieurs), avec le total de la mission. Toutes les missions comptent, même
+ * sans ligne de devis ; sans la liste des missions, elles se déduisent des prestations.
+ * Mission vue : celle choisie, sinon la première du client choisi, sinon celle de la prestation courante.
  */
-function parMission(actifs, courant, mission, versLot, minParJour) {
-  const missions = [];
-  for (const l of actifs) if (!missions.some((m) => m.id === l.Mission)) missions.push({ id: l.Mission, libelle: libelleMission(l) });
-  const vue = missions.some((m) => m.id === mission) ? mission : (courant ? courant.Mission : missions[0]?.id);
-  const lots = actifs.filter((l) => l.Mission === vue).map(versLot);
+function parMission(actifs, toutes, courant, choix, versLot, minParJour) {
+  const missions = toutes?.length ? toutes.map((m) => ({ ...m })) : [];
+  for (const l of actifs) {
+    if (!missions.some((m) => m.id === l.Mission)) missions.push({ id: l.Mission, Nom: l.Mission_nom, Client_nom: l.Client_nom });
+  }
+  const cleClient = (m) => m.Client_nom || '';
+  const avecPrestations = (m) => actifs.some((l) => l.Mission === m.id);
+  const duClient = (c) => missions.filter((m) => cleClient(m) === c);
+  let vue = missions.find((m) => m.id === choix.mission);
+  if (!vue && choix.client != null) vue = duClient(choix.client).find(avecPrestations) || duClient(choix.client)[0];
+  if (!vue) vue = missions.find((m) => m.id === courant?.Mission) || missions.find(avecPrestations) || missions[0];
+  const client = vue ? cleClient(vue) : '';
+  const lots = actifs.filter((l) => l.Mission === vue?.id).map(versLot);
   const titres = [...new Set(lots.map((l) => l.lotTxt))];
   const reel = lots.reduce((t, l) => t + l.reelMin, 0);
   const vendu = lots.reduce((t, l) => t + l.venduJ, 0);
   return {
-    missions: missions.map((m) => ({ ...m, choisie: m.id === vue })),
-    missionVue: vue,
-    missionTxt: missions.find((m) => m.id === vue)?.libelle || '',
+    clients: [...new Set(missions.map(cleClient))].map((c) => ({ id: c, libelle: c || 'Sans client', choisi: c === client })),
+    missions: duClient(client).map((m) => ({ id: m.id, libelle: m.Nom, choisie: m.id === vue?.id })),
+    missionVue: vue?.id,
+    missionTxt: vue ? [vue.Client_nom, vue.Nom].filter(Boolean).join(' · ') : '',
     lots,
     groupes: titres.map((t) => ({ titre: titres.length > 1 ? t || 'Sans lot' : '', lots: lots.filter((l) => l.lotTxt === t) })),
     totalMission: { reelTxt: jours(reel, minParJour), venduTxt: `${nbJours(vendu)} vendus` },

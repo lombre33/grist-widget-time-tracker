@@ -1,6 +1,6 @@
 {
   "name": "grist-widget-time-tracker",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "Time tracker : widget Grist qui chronomètre le temps passé par prestation et le compare aux jours vendus.",
